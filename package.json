@@ -1,0 +1,50 @@
+{
+  "name": "ai-cost-audit",
+  "version": "0.1.0",
+  "description": "AI context cost profiler and linter — know what every AI coding request costs before your developers send it",
+  "type": "module",
+  "license": "MIT",
+  "engines": {
+    "node": ">=20"
+  },
+  "bin": {
+    "ai-cost-audit": "dist/cli.js"
+  },
+  "files": [
+    "dist",
+    "README.md"
+  ],
+  "scripts": {
+    "build": "tsup",
+    "dev": "tsup --watch",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "typecheck": "tsc --noEmit",
+    "prepublishOnly": "npm run typecheck && npm run test && npm run build"
+  },
+  "keywords": [
+    "ai",
+    "llm",
+    "tokens",
+    "cost",
+    "claude",
+    "claude-code",
+    "mcp",
+    "context",
+    "linter",
+    "ci"
+  ],
+  "dependencies": {
+    "commander": "^12.1.0",
+    "fast-glob": "^3.3.2",
+    "js-tiktoken": "^1.0.15",
+    "picocolors": "^1.1.0",
+    "zod": "^3.23.8"
+  },
+  "devDependencies": {
+    "@types/node": "^20.14.0",
+    "tsup": "^8.3.0",
+    "typescript": "^5.6.0",
+    "vitest": "^2.1.0"
+  }
+}

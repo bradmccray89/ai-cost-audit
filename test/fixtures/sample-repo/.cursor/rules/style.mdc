@@ -1,0 +1,6 @@
+---
+description: Style rules for TypeScript files
+globs: ["**/*.ts"]
+---
+
+Use two-space indentation. Prefer const. Name booleans with is/has prefixes.

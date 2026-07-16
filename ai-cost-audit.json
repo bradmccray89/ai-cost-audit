@@ -1,0 +1,14 @@
+{
+  "providers": ["anthropic"],
+  "models": ["claude-opus-4-8", "claude-sonnet-5"],
+  "monthlyBudget": 100,
+  "developers": 3,
+  "baselineTokenLimit": 30000,
+  "growthThresholdPct": 20,
+  "requestsPerDay": [50, 200, 1000],
+  "cache": { "enabled": true, "requestsPerSession": 10 },
+  "variable": {
+    "conversationHistory": [8000, 25000],
+    "taskFiles": [5000, 15000]
+  }
+}
