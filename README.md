@@ -8,7 +8,7 @@ types anything meaningful — `CLAUDE.md`, agent and skill definitions, MCP serv
 Cursor rules, Copilot instructions, referenced docs — and tells you:
 
 - how large your **guaranteed baseline** is (tokens loaded on *every* request),
-- what it **costs per request and per day**, with and without prompt caching,
+- what it **costs per turn and per day** (a turn = one message and its API calls), with and without prompt caching,
 - how long your **monthly budget** actually lasts,
 - where the **waste** is (duplicated guidance, oversized files, unbounded MCP configs),
 - and it **fails CI** when the baseline exceeds your budget or grows too fast.
@@ -50,15 +50,16 @@ system prompt + built-in tool definitions, loaded before any repo file.
 | Cursor         |  3,980 |      0 |         9,000 | **12,980** |
 | GitHub Copilot |  2,150 |      0 |         4,000 |  **6,150** |
 
-## Estimated cost per request (baseline input only)
+## Estimated cost per turn (baseline input only)
 
-Claude Code (baseline 81,690 tokens)
+Claude Code (baseline 81,690 tokens). A turn is one user message and the 1–15 API
+calls it triggers — each re-sends the baseline, so costs are ranges:
 
-| Model           | Uncached | With caching (typical) |
-|-----------------|---------:|-----------------------:|
-| claude-opus-4-8 | $0.41    | $0.09                  |
+| Model           | Uncached/turn | With caching/turn |
+|-----------------|--------------:|------------------:|
+| claude-opus-4-8 | $0.41–$6.13   | $0.09–$0.68       |
 
-At 200 requests/day per developer (3 developers), your $100/month budget lasts ~1.9 days.
+At 200 turns/day per developer (3 developers), your $100/month budget lasts ~1.6–9.6 days.
 
 ## High-impact findings
 
@@ -123,8 +124,9 @@ Drop an `ai-cost-audit.json` in your repo root (all fields optional — zero-con
   "developers": 3,
   "baselineTokenLimit": 30000,
   "growthThresholdPct": 20,
-  "requestsPerDay": [50, 200, 1000],
-  "cache": { "enabled": true, "requestsPerSession": 10 },
+  "turnsPerDay": [50, 200, 1000],
+  "apiCallsPerTurn": [1, 15],
+  "cache": { "enabled": true, "turnsPerSession": 10 },
   "variable": {
     "conversationHistory": [8000, 25000],
     "taskFiles": [5000, 15000]
@@ -165,20 +167,33 @@ ai-cost-audit scan [path]
                          (default: offline; uses bundled dated prices)
 ```
 
-## The cost model (and why caching matters)
+## The cost model (turns, API calls, and caching)
 
-A naive `tokens × price × requests` estimate overstates real spend by up to ~10×,
-because baseline context is exactly the part that prompt caching serves cheaply.
-The report shows both figures:
+Two corrections separate this from a naive `tokens × price × requests` estimate,
+and they pull in opposite directions:
 
-- **Uncached:** `baseline_tokens × input_price` per request.
-- **With caching (typical):** the first request of a session pays the cache-write
-  multiplier (1.25× for Anthropic's 5-minute TTL), subsequent requests pay the read
-  multiplier (0.1×). With `requestsPerSession = n`:
-  `effective = (write + read × (n−1)) / n` — about **0.215×** at n=10.
+1. **Caching makes the baseline cheap.** Baseline context is exactly the part
+   prompt caching serves at the read multiplier, so a naive estimate *overstates*.
+2. **A turn is many API calls.** One user message in an agentic tool triggers
+   several API calls (tool-use round trips), and *each one re-sends the baseline*.
+   So the per-turn cost is roughly `apiCallsPerTurn ×` the per-call cost — a naive
+   single-call estimate *understates* the turn.
 
-The formula is printed in every report so the math is auditable. Baseline cost is
-input-side only; output tokens depend on what the model generates and are out of scope.
+The tool models both. A **turn** is one user message and the `apiCallsPerTurn`
+`[min, max]` calls it triggers; costs are shown as ranges across that span:
+
+- **Uncached/turn:** `per_call_input_cost × calls` — every call pays the full baseline.
+- **With caching/turn:** the first API call of a session pays the cache-write
+  multiplier (1.25× for Anthropic's 5-minute TTL); every later call across the
+  session pays the read multiplier (0.1×). Over `S = calls × turnsPerSession`
+  session calls: `effective_per_call = (write + read × (S−1)) / S`, and the turn
+  pays `calls ×` that. (At `apiCallsPerTurn = [1,1]` this reduces to the classic
+  ~0.215× single-request figure.)
+
+`apiCallsPerTurn` is a rough default pending per-user measurement from local
+transcripts (on the roadmap); tune it to your workflow. The formula is printed in
+every report so the math is auditable. Cost is input-side only; output tokens are
+priced separately and are out of scope for now (also on the roadmap).
 
 ## Honesty (read this)
 

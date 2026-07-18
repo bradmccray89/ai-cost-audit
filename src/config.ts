@@ -15,11 +15,12 @@ const configSchema = z
     developers: z.number().int().positive().default(1),
     baselineTokenLimit: z.number().positive().nullable().default(null),
     growthThresholdPct: z.number().positive().default(20),
-    requestsPerDay: z.array(z.number().positive()).default([50, 200, 1000]),
+    turnsPerDay: z.array(z.number().positive()).default([50, 200, 1000]),
+    apiCallsPerTurn: rangeSchema.default([1, 15]),
     cache: z
       .object({
         enabled: z.boolean().default(true),
-        requestsPerSession: z.number().int().positive().default(10),
+        turnsPerSession: z.number().int().positive().default(10),
       })
       .default({}),
     variable: z

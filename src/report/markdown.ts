@@ -1,4 +1,4 @@
-import type { Config, Consumer, ModelCost, Report } from "../types.js";
+import type { Config, Consumer, ModelCost, MoneyRange, Report } from "../types.js";
 import { CONSUMER_LABELS, CONSUMER_ORDER } from "../consumers.js";
 
 export const KIND_LABELS: Record<string, string> = {
@@ -21,6 +21,20 @@ export function formatUSD(value: number | null): string {
   if (value === 0) return "$0.00";
   if (value < 0.01) return `$${value.toFixed(4)}`;
   return `$${value.toFixed(2)}`;
+}
+
+/** Format a money range, collapsing to a single value when min ≈ max. */
+export function formatUSDRange(range: MoneyRange | null): string {
+  if (range === null) return "—";
+  if (Math.abs(range.max - range.min) < 1e-9) return formatUSD(range.min);
+  return `${formatUSD(range.min)}–${formatUSD(range.max)}`;
+}
+
+/** Format a runway range in days, collapsing when min ≈ max. */
+export function formatDays(range: MoneyRange | null): string {
+  if (range === null) return "—";
+  if (Math.abs(range.max - range.min) < 0.05) return `${range.min.toFixed(1)} days`;
+  return `${range.min.toFixed(1)}–${range.max.toFixed(1)} days`;
 }
 
 function num(n: number): string {
@@ -90,7 +104,14 @@ export function renderMarkdown(report: Report, cfg: Config): string {
   lines.push("");
 
   // 3. Per-model cost, per tool
-  lines.push(`## Estimated cost per request (baseline input only)`);
+  const [aLo, aHi] = cfg.apiCallsPerTurn;
+  lines.push(`## Estimated cost per turn (baseline input only)`);
+  lines.push("");
+  lines.push(
+    `A **turn** is one user message and the ${aLo}–${aHi} API calls it triggers ` +
+      `(tool-use round trips); each call re-sends the baseline, so costs are ranges. ` +
+      `Tune \`apiCallsPerTurn\` to your workflow.`,
+  );
   lines.push("");
   const costsByConsumer = new Map<Consumer, ModelCost[]>();
   for (const c of costs) {
@@ -104,11 +125,11 @@ export function renderMarkdown(report: Report, cfg: Config): string {
       lines.push(`**${CONSUMER_LABELS[consumer]}** (baseline ${num(totals.byConsumer[consumer]!.total)} tokens)`);
       lines.push("");
     }
-    lines.push(`| Model | Uncached | With caching (typical) |`);
+    lines.push(`| Model | Uncached/turn | With caching/turn |`);
     lines.push(`|---|---:|---:|`);
     for (const c of consumerCosts) {
       lines.push(
-        `| ${c.model} | ${formatUSD(c.perRequestUncached)} | ${formatUSD(c.perRequestCached)} |`,
+        `| ${c.model} | ${formatUSDRange(c.perTurnUncached)} | ${formatUSDRange(c.perTurnCached)} |`,
       );
     }
     lines.push("");
@@ -125,38 +146,38 @@ export function renderMarkdown(report: Report, cfg: Config): string {
   for (const consumer of consumers) {
     for (const c of costsByConsumer.get(consumer) ?? []) {
       const label = consumers.length > 1 ? `${CONSUMER_LABELS[consumer]} · ${c.model}` : c.model;
-      if (c.perRequestUncached === null) {
+      if (c.perTurnUncached === null) {
         lines.push(`- ${label}: pricing not set (see config.pricingOverrides)`);
         continue;
       }
       lines.push(`**${label}**`);
       lines.push("");
-      lines.push(`| Requests/day | Uncached | With caching |`);
+      lines.push(`| Turns/day | Uncached | With caching |`);
       lines.push(`|---:|---:|---:|`);
       for (const d of c.daily) {
         lines.push(
-          `| ${num(d.requestsPerDay)} | ${formatUSD(d.uncached)}/day | ${formatUSD(d.cached)}/day |`,
+          `| ${num(d.turnsPerDay)} | ${formatUSDRange(d.uncached)}/day | ${formatUSDRange(d.cached)}/day |`,
         );
       }
       lines.push("");
       if (c.runwayDays !== null && cfg.monthlyBudget !== null) {
-        const sorted = [...cfg.requestsPerDay].sort((a, b) => a - b);
+        const sorted = [...cfg.turnsPerDay].sort((a, b) => a - b);
         const midRate = sorted[Math.floor(sorted.length / 2)]!;
         lines.push(
-          `At ${num(midRate)} requests/day per developer` +
+          `At ${num(midRate)} turns/day per developer` +
             (cfg.developers > 1 ? ` (${cfg.developers} developers)` : "") +
-            `, your $${cfg.monthlyBudget}/month budget lasts ~${c.runwayDays.toFixed(1)} days.`,
+            `, your $${cfg.monthlyBudget}/month budget lasts ~${formatDays(c.runwayDays)}.`,
         );
         lines.push("");
       }
     }
   }
 
-  // 5. Typical request range (variable bucket), per tool
-  lines.push(`## Typical full-request range`);
+  // 5. Per-call context size (variable bucket), per tool
+  lines.push(`## Typical context per API call`);
   lines.push("");
   lines.push(
-    `Baseline plus variable context (conversation history ` +
+    `A single API call's input: baseline plus variable context (conversation history ` +
       `${num(cfg.variable.conversationHistory[0])}–${num(cfg.variable.conversationHistory[1])}, ` +
       `task files ${num(cfg.variable.taskFiles[0])}–${num(cfg.variable.taskFiles[1])} tokens):`,
   );

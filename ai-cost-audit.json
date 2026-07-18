@@ -5,8 +5,9 @@
   "developers": 3,
   "baselineTokenLimit": 30000,
   "growthThresholdPct": 20,
-  "requestsPerDay": [50, 200, 1000],
-  "cache": { "enabled": true, "requestsPerSession": 10 },
+  "turnsPerDay": [50, 200, 1000],
+  "apiCallsPerTurn": [1, 15],
+  "cache": { "enabled": true, "turnsPerSession": 10 },
   "variable": {
     "conversationHistory": [8000, 25000],
     "taskFiles": [5000, 15000]

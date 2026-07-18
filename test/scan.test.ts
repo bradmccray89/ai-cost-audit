@@ -146,7 +146,7 @@ describe("runScan (integration on fixture repo)", () => {
     const cost = report.costs.find(
       (c) => c.consumer === "claude-code" && c.model === "claude-opus-4-8",
     )!;
-    expect(cost.perRequestUncached!).toBeGreaterThan((15_000 / 1_000_000) * 5.0);
+    expect(cost.perTurnUncached!.min).toBeGreaterThan((15_000 / 1_000_000) * 5.0);
   });
 
   it("respects systemOverheadTokens overrides, including 0 to exclude", async () => {
@@ -183,7 +183,7 @@ describe("runScan (integration on fixture repo)", () => {
     const copilotCost = report.costs.find(
       (c) => c.consumer === "copilot" && c.model === "claude-opus-4-8",
     )!;
-    expect(copilotCost.perRequestUncached!).toBeLessThan(claudeCost.perRequestUncached!);
+    expect(copilotCost.perTurnUncached!.min).toBeLessThan(claudeCost.perTurnUncached!.min);
   });
 
   it("respects scan.exclude for discovered sources", async () => {
@@ -205,8 +205,8 @@ describe("runScan (integration on fixture repo)", () => {
     const { report } = await runScan(SAMPLE_REPO, cfg, null);
     const cost = report.costs.find((c) => c.model === "my-fine-tune");
     expect(cost).toBeDefined();
-    expect(cost!.perRequestUncached).not.toBeNull();
-    expect(cost!.perRequestUncached!).toBeGreaterThan(0);
+    expect(cost!.perTurnUncached).not.toBeNull();
+    expect(cost!.perTurnUncached!.min).toBeGreaterThan(0);
   });
 
   it("attaches custom models to a known provider via pricingOverrides.provider", async () => {
@@ -218,7 +218,7 @@ describe("runScan (integration on fixture repo)", () => {
     const cost = report.costs.find((c) => c.model === "my-fine-tune")!;
     expect(cost.provider).toBe("anthropic");
     // Anthropic provider has cache modeling, so the cached figure exists.
-    expect(cost.perRequestCached).not.toBeNull();
+    expect(cost.perTurnCached).not.toBeNull();
   });
 
   it("counts agent descriptions as guaranteed and bodies as conditional", async () => {

@@ -1,7 +1,7 @@
 import pc from "picocolors";
 import type { Config, Consumer, ModelCost, Report } from "../types.js";
 import { CONSUMER_LABELS, CONSUMER_ORDER } from "../consumers.js";
-import { formatUSD, KIND_LABELS } from "./markdown.js";
+import { formatDays, formatUSDRange, KIND_LABELS } from "./markdown.js";
 
 /**
  * Terminal-native rendering: aligned columns instead of markdown pipes,
@@ -158,8 +158,9 @@ export function renderTerminal(report: Report, cfg: Config): string {
   );
   blank();
 
-  // 3. Cost per request
-  out.push(heading("Cost per request") + pc.dim("  (baseline input only)"));
+  // 3. Cost per turn
+  const [aLo, aHi] = cfg.apiCallsPerTurn;
+  out.push(heading("Cost per turn") + pc.dim(`  (${aLo}–${aHi} API calls/turn, baseline input only)`));
   out.push(
     ...table(
       [
@@ -171,15 +172,22 @@ export function renderTerminal(report: Report, cfg: Config): string {
       costs.map((c) => [
         CONSUMER_LABELS[c.consumer],
         c.model,
-        formatUSD(c.perRequestUncached),
-        formatUSD(c.perRequestCached),
+        formatUSDRange(c.perTurnUncached),
+        formatUSDRange(c.perTurnCached),
       ]),
     ),
   );
+  out.push(
+    INDENT +
+      pc.dim(
+        `A turn = 1 message + its API calls (tool-use round trips); each re-sends the ` +
+          `baseline. Tune apiCallsPerTurn to your workflow.`,
+      ),
+  );
   blank();
 
-  // 4. Daily projections, one compact table per tool: models x request rates.
-  out.push(heading("Daily projections") + pc.dim("  (cached · uncached, per developer)"));
+  // 4. Daily projections, one compact table per tool: models x turn rates.
+  out.push(heading("Daily projections") + pc.dim("  (cached, per developer)"));
   const costsByConsumer = new Map<Consumer, ModelCost[]>();
   for (const c of costs) {
     const list = costsByConsumer.get(c.consumer) ?? [];
@@ -188,37 +196,33 @@ export function renderTerminal(report: Report, cfg: Config): string {
   }
   for (const consumer of consumers) {
     const consumerCosts = (costsByConsumer.get(consumer) ?? []).filter(
-      (c) => c.perRequestUncached !== null,
+      (c) => c.perTurnUncached !== null,
     );
     if (consumerCosts.length === 0) continue;
-    const rates = consumerCosts[0]!.daily.map((d) => d.requestsPerDay);
+    const rates = consumerCosts[0]!.daily.map((d) => d.turnsPerDay);
     out.push(INDENT + pc.bold(CONSUMER_LABELS[consumer]));
     out.push(
       ...table(
         [
           { header: "Model", align: "left" },
-          ...rates.map((r) => ({ header: `${num(r)}/day`, align: "right" as const })),
+          ...rates.map((r) => ({ header: `${num(r)} turns/day`, align: "right" as const })),
         ],
         consumerCosts.map((c) => [
           c.model,
-          ...c.daily.map((d) =>
-            d.cached !== null
-              ? `${formatUSD(d.cached)} · ${formatUSD(d.uncached)}`
-              : formatUSD(d.uncached),
-          ),
+          ...c.daily.map((d) => `${formatUSDRange(d.cached ?? d.uncached)}/day`),
         ]),
       ),
     );
     const withRunway = consumerCosts.filter((c) => c.runwayDays !== null);
     if (withRunway.length > 0 && cfg.monthlyBudget !== null) {
-      const sorted = [...cfg.requestsPerDay].sort((a, b) => a - b);
+      const sorted = [...cfg.turnsPerDay].sort((a, b) => a - b);
       const midRate = sorted[Math.floor(sorted.length / 2)]!;
       for (const c of withRunway) {
         out.push(
           INDENT +
             pc.dim(
-              `$${cfg.monthlyBudget}/mo lasts ~${c.runwayDays!.toFixed(1)} days on ${c.model} ` +
-                `at ${num(midRate)} req/day` +
+              `$${cfg.monthlyBudget}/mo lasts ~${formatDays(c.runwayDays)} on ${c.model} ` +
+                `at ${num(midRate)} turns/day` +
                 (cfg.developers > 1 ? ` × ${cfg.developers} devs` : ""),
             ),
         );
@@ -227,8 +231,8 @@ export function renderTerminal(report: Report, cfg: Config): string {
     blank();
   }
 
-  // 5. Typical full-request range
-  out.push(heading("Typical full-request range") + pc.dim("  (baseline + variable context)"));
+  // 5. Typical context per API call
+  out.push(heading("Typical context per API call") + pc.dim("  (baseline + variable context)"));
   for (const consumer of consumers) {
     const range = report.requestRanges[consumer];
     if (!range) continue;

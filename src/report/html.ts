@@ -1,6 +1,6 @@
 import type { Config, Consumer, Report } from "../types.js";
 import { CONSUMER_LABELS, CONSUMER_ORDER } from "../consumers.js";
-import { formatUSD } from "./markdown.js";
+import { formatUSDRange } from "./markdown.js";
 
 function esc(text: string): string {
   return text
@@ -47,7 +47,7 @@ export function renderHtml(report: Report, cfg: Config): string {
   const costRows = costs
     .map(
       (c) =>
-        `<tr><td>${esc(CONSUMER_LABELS[c.consumer])}</td><td>${esc(c.model)}</td><td class="r">${formatUSD(c.perRequestUncached)}</td><td class="r">${formatUSD(c.perRequestCached)}</td></tr>`,
+        `<tr><td>${esc(CONSUMER_LABELS[c.consumer])}</td><td>${esc(c.model)}</td><td class="r">${formatUSDRange(c.perTurnUncached)}</td><td class="r">${formatUSDRange(c.perTurnCached)}</td></tr>`,
     )
     .join("\n");
 
@@ -118,18 +118,19 @@ ${consumerRows}
 </table>
 <p class="muted">Tool overhead = the tool's own system prompt + built-in tool definitions, loaded before any repo file. Shipped estimates as of ${esc(meta.systemOverheadAsOf)}; override via config.systemOverheadTokens.</p>
 
-<h2>Estimated cost per request (baseline input only)</h2>
+<h2>Estimated cost per turn (baseline input only)</h2>
+<p class="muted">A turn is one user message and the ${num(cfg.apiCallsPerTurn[0])}&ndash;${num(cfg.apiCallsPerTurn[1])} API calls it triggers (tool-use round trips); each re-sends the baseline, so costs are ranges. Tune apiCallsPerTurn to your workflow.</p>
 <table>
-<tr><th>Tool</th><th>Model</th><th class="r">Uncached</th><th class="r">With caching (typical)</th></tr>
+<tr><th>Tool</th><th>Model</th><th class="r">Uncached/turn</th><th class="r">With caching/turn</th></tr>
 ${costRows}
 </table>
 <p class="muted">${esc(meta.cacheFormula)}</p>
 
-<h2>Typical full-request range</h2>
+<h2>Typical context per API call</h2>
 <ul>
 ${rangeItems}
 </ul>
-<p class="muted">Baseline + conversation history (${num(cfg.variable.conversationHistory[0])}&ndash;${num(cfg.variable.conversationHistory[1])}) + task files (${num(cfg.variable.taskFiles[0])}&ndash;${num(cfg.variable.taskFiles[1])}). Ranges, not measurements.</p>
+<p class="muted">A single API call's input: baseline + conversation history (${num(cfg.variable.conversationHistory[0])}&ndash;${num(cfg.variable.conversationHistory[1])}) + task files (${num(cfg.variable.taskFiles[0])}&ndash;${num(cfg.variable.taskFiles[1])}). Ranges, not measurements.</p>
 
 <h2>High-impact findings</h2>
 <ol>

@@ -2,5 +2,5 @@
   "monthlyBudget": 100,
   "developers": 3,
   "baselineTokenLimit": 30000,
-  "requestsPerDay": [50, 200, 1000]
+  "turnsPerDay": [50, 200, 1000]
 }

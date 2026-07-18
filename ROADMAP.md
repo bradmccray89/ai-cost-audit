@@ -22,11 +22,12 @@ add new findings at the appropriate tier, not the bottom.
 
 ## 1. Estimation correctness — the numbers must survive comparison with a real invoice
 
-- [ ] **Model turns vs API calls.** One user turn in an agentic tool is 10–50 API
-      calls; each re-sends baseline + growing history (mostly cache reads, but
-      0.1× on 100k+ context adds up). Add `apiCallsPerTurn` (configurable range,
-      later measured from transcripts) and make "requests/day" explicitly mean
-      user turns. This is the last ~10× error in the model.
+- [x] **Model turns vs API calls.** `apiCallsPerTurn` `[min,max]` range (default
+      [1,15]); a turn = one message + its API calls, each re-sending the baseline.
+      Per-turn costs are ranges; cache write amortized over `calls × turnsPerSession`
+      session calls. Config renamed requests→turns. Still a configured guess —
+      transcript measurement (tier 2) replaces it with per-user data. Left open:
+      per-call *growing history* is still only in the variable range, not per-turn cost.
 - [ ] **Output token modeling.** Output is priced 5× input and is 20–40% of real
       spend. Add a configurable output-tokens-per-turn range (like `variable`),
       shown as a separate disclosed line.

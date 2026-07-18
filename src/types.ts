@@ -76,19 +76,35 @@ export interface ProviderInfo {
   cache?: { write: number; read: number };
 }
 
+/** An inclusive low–high USD range, reflecting the apiCallsPerTurn range. */
+export interface MoneyRange {
+  min: number;
+  max: number;
+}
+
+export interface DailyProjection {
+  turnsPerDay: number;
+  uncached: MoneyRange | null;
+  cached: MoneyRange | null;
+}
+
 export interface ModelCost {
   /** The tool whose baseline this cost is computed from. */
   consumer: Consumer;
   model: string;
   provider: string;
-  /** USD per request, baseline input only, no caching. */
-  perRequestUncached: number | null;
-  /** USD per request, steady-state with prompt caching. null if provider has no cache model. */
-  perRequestCached: number | null;
-  /** USD per day for each configured requests/day scenario. */
-  daily: { requestsPerDay: number; uncached: number | null; cached: number | null }[];
+  /**
+   * USD per user turn, baseline input only, no caching. A turn is one user
+   * message and the several API calls (tool-use round trips) it triggers; each
+   * call re-sends the baseline, so the range spans apiCallsPerTurn min..max.
+   */
+  perTurnUncached: MoneyRange | null;
+  /** USD per turn, steady-state with prompt caching. null if no cache model. */
+  perTurnCached: MoneyRange | null;
+  /** USD per day for each configured turns/day scenario. */
+  daily: DailyProjection[];
   /** Days the monthly budget lasts (team-wide), cached model when available. */
-  runwayDays: number | null;
+  runwayDays: MoneyRange | null;
 }
 
 export interface ConsumerTotals {
@@ -145,7 +161,7 @@ export interface Report {
   totals: ReportTotals;
   sources: Omit<ContextSource, "text">[];
   costs: ModelCost[];
-  /** Per-tool typical full-request token range (baseline + variable context). */
+  /** Per-tool token range for a single API call (baseline + variable context). */
   requestRanges: Record<string, { min: number; max: number }>;
   findings: Finding[];
 }
@@ -169,8 +185,11 @@ export interface Config {
   developers: number;
   baselineTokenLimit: number | null;
   growthThresholdPct: number;
-  requestsPerDay: number[];
-  cache: { enabled: boolean; requestsPerSession: number };
+  /** A turn is one user message and the API calls it triggers (see apiCallsPerTurn). */
+  turnsPerDay: number[];
+  /** API calls (tool-use round trips) per user turn, as a [min, max] range. */
+  apiCallsPerTurn: [number, number];
+  cache: { enabled: boolean; turnsPerSession: number };
   variable: { conversationHistory: [number, number]; taskFiles: [number, number] };
   calibration: Record<string, number>;
   /** Per-tool override of the shipped system-overhead estimates. 0 excludes it. */

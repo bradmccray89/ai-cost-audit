@@ -20,9 +20,9 @@ describe("renderTerminal", () => {
     for (const section of [
       "GUARANTEED CONTEXT",
       "PER-TOOL BASELINES",
-      "COST PER REQUEST",
+      "COST PER TURN",
       "DAILY PROJECTIONS",
-      "TYPICAL FULL-REQUEST RANGE",
+      "TYPICAL CONTEXT PER API CALL",
       "FINDINGS",
       "ALL DISCOVERED SOURCES",
     ]) {
