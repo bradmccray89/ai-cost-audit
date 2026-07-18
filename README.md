@@ -193,12 +193,9 @@ input-side only; output tokens depend on what the model generates and are out of
 
 ## Roadmap
 
-- `--accurate` flag: exact Anthropic counts via the `count_tokens` API (opt-in, needs a key)
-- Bundled catalog of measured schema sizes for popular MCP servers
-- Per-task scenario modeling ("Fix Angular component → 97k–114k tokens")
-- Predicted-vs-actual reconciliation against provider usage APIs
-- Opt-in AI pass: semantic duplication, condensed-instruction suggestions, executive summary
-- Finding suppression (`--ignore <rule>`), historical trend charts
+See [ROADMAP.md](ROADMAP.md) — the running, prioritized list of everything
+planned before v1, from estimation-model work (turns vs API calls, output
+tokens) to transcript-based measurement and discovery gaps.
 
 ## Development
 
