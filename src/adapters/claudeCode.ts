@@ -5,7 +5,7 @@ import path from "node:path";
 import fg from "fast-glob";
 import type { Config, ContextAdapter, ContextSource } from "../types.js";
 import { estimateTokens } from "../tokenizer.js";
-import { displayPath, followReferences } from "../discovery.js";
+import { displayPath, excludeMatcher, followReferences } from "../discovery.js";
 
 /**
  * Claude Code adapter: CLAUDE.md / CLAUDE.local.md, user-global ~/.claude/CLAUDE.md,
@@ -18,6 +18,7 @@ export const claudeCodeAdapter: ContextAdapter = {
   async discover(projectPath: string, cfg: Config): Promise<ContextSource[]> {
     const sources: ContextSource[] = [];
     const provider = "anthropic";
+    const isExcluded = excludeMatcher(cfg.scan.exclude);
 
     const addFile = async (
       absPath: string,
@@ -25,6 +26,7 @@ export const claudeCodeAdapter: ContextAdapter = {
         Partial<Pick<ContextSource, "note" | "referencedFrom" | "path">>,
     ): Promise<string | null> => {
       if (!existsSync(absPath)) return null;
+      if (partial.scope === "repo" && isExcluded(displayPath(absPath, projectPath))) return null;
       let text: string;
       try {
         text = await readFile(absPath, "utf8");
@@ -37,6 +39,7 @@ export const claudeCodeAdapter: ContextAdapter = {
         kind: partial.kind,
         usage: partial.usage,
         scope: partial.scope,
+        consumers: ["claude-code"],
         tokens: estimateTokens(text, provider, cfg),
         confidence: partial.confidence,
         note: partial.note,
@@ -65,7 +68,13 @@ export const claudeCodeAdapter: ContextAdapter = {
     // Follow @imports / local markdown links out of CLAUDE.md — referenced docs
     // load with it, so they inherit guaranteed usage.
     if (rootText) {
-      const refs = await followReferences(rootClaudeMd, rootText, projectPath, cfg.refDepth);
+      const refs = await followReferences(
+        rootClaudeMd,
+        rootText,
+        projectPath,
+        cfg.refDepth,
+        cfg.scan.exclude,
+      );
       for (const ref of refs) {
         await addFile(ref.absPath, {
           kind: "referenced-doc",
@@ -91,22 +100,53 @@ export const claudeCodeAdapter: ContextAdapter = {
       });
     }
 
-    // Agents: definitions load when the agent is invoked; frontmatter descriptions
-    // are listed for the main loop. Without parsing invocation config we classify
-    // the full file as conditional with a note (most agents are subagents).
+    // Agents: split like skills. The frontmatter (name/description) is listed
+    // for the main loop every session (guaranteed); the body prompt loads only
+    // when the agent is invoked (conditional).
     const agentFiles = await fg(".claude/agents/**/*.md", {
       cwd: projectPath,
       absolute: true,
       dot: true,
+      ignore: cfg.scan.exclude,
     });
     for (const file of agentFiles.sort()) {
-      await addFile(file, {
-        kind: "agent",
-        usage: "conditional",
-        scope: "repo",
-        confidence: "medium",
-        note: "loads when the agent is invoked; its description line loads every session",
-      });
+      let text: string;
+      try {
+        text = await readFile(file, "utf8");
+      } catch {
+        continue;
+      }
+      const rel = displayPath(file, projectPath);
+      if (isExcluded(rel)) continue;
+      const { frontmatter, body } = splitFrontmatter(text);
+      if (frontmatter) {
+        sources.push({
+          path: `${rel} (description)`,
+          adapter: "claude-code",
+          kind: "agent-description",
+          usage: "guaranteed",
+          scope: "repo",
+          consumers: ["claude-code"],
+          tokens: estimateTokens(frontmatter, provider, cfg),
+          confidence: "high",
+          note: "agent metadata is listed for the main loop every session",
+          text: frontmatter,
+        });
+      }
+      if (body.trim().length > 0) {
+        sources.push({
+          path: frontmatter ? `${rel} (body)` : rel,
+          adapter: "claude-code",
+          kind: "agent",
+          usage: "conditional",
+          scope: "repo",
+          consumers: ["claude-code"],
+          tokens: estimateTokens(body, provider, cfg),
+          confidence: "medium",
+          note: "loads when the agent is invoked",
+          text: body,
+        });
+      }
     }
 
     // Skills: SKILL.md frontmatter/description is always loaded (progressive
@@ -115,6 +155,7 @@ export const claudeCodeAdapter: ContextAdapter = {
       cwd: projectPath,
       absolute: true,
       dot: true,
+      ignore: cfg.scan.exclude,
     });
     for (const file of skillFiles.sort()) {
       let text: string;
@@ -132,6 +173,7 @@ export const claudeCodeAdapter: ContextAdapter = {
           kind: "skill-description",
           usage: "guaranteed",
           scope: "repo",
+          consumers: ["claude-code"],
           tokens: estimateTokens(frontmatter, "anthropic", cfg),
           confidence: "high",
           note: "skill metadata loads every session (progressive disclosure)",
@@ -145,6 +187,7 @@ export const claudeCodeAdapter: ContextAdapter = {
           kind: "skill-body",
           usage: "conditional",
           scope: "repo",
+          consumers: ["claude-code"],
           tokens: estimateTokens(body, "anthropic", cfg),
           confidence: "high",
           note: "loads only when the skill is invoked",
@@ -158,6 +201,7 @@ export const claudeCodeAdapter: ContextAdapter = {
       cwd: projectPath,
       absolute: true,
       dot: true,
+      ignore: cfg.scan.exclude,
     });
     for (const file of commandFiles.sort()) {
       await addFile(file, {

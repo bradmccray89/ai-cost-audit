@@ -1,4 +1,5 @@
-import type { Config, Report } from "../types.js";
+import type { Config, Consumer, Report } from "../types.js";
+import { CONSUMER_LABELS, CONSUMER_ORDER } from "../consumers.js";
 import { formatUSD } from "./markdown.js";
 
 function esc(text: string): string {
@@ -34,11 +35,28 @@ export function renderHtml(report: Report, cfg: Config): string {
       .join("\n");
   })();
 
+  const consumers = CONSUMER_ORDER.filter((c) => totals.byConsumer[c] !== undefined);
+
+  const consumerRows = consumers
+    .map((c) => {
+      const t = totals.byConsumer[c]!;
+      return `<tr><td>${esc(CONSUMER_LABELS[c])}</td><td class="r">${num(t.gated)}</td><td class="r">${num(t.global)}</td><td class="r">${num(t.systemOverhead)}</td><td class="r"><strong>${num(t.total)}</strong></td></tr>`;
+    })
+    .join("\n");
+
   const costRows = costs
     .map(
       (c) =>
-        `<tr><td>${esc(c.model)}</td><td class="r">${formatUSD(c.perRequestUncached)}</td><td class="r">${formatUSD(c.perRequestCached)}</td></tr>`,
+        `<tr><td>${esc(CONSUMER_LABELS[c.consumer])}</td><td>${esc(c.model)}</td><td class="r">${formatUSD(c.perRequestUncached)}</td><td class="r">${formatUSD(c.perRequestCached)}</td></tr>`,
     )
+    .join("\n");
+
+  const rangeItems = consumers
+    .map((c) => {
+      const range = report.requestRanges[c];
+      if (!range) return "";
+      return `<li><strong>${esc(CONSUMER_LABELS[c])}:</strong> ${num(range.min)}&ndash;${num(range.max)} input tokens</li>`;
+    })
     .join("\n");
 
   const findingItems =
@@ -55,7 +73,7 @@ export function renderHtml(report: Report, cfg: Config): string {
     .sort((a, b) => b.tokens - a.tokens)
     .map(
       (s) =>
-        `<tr><td><code>${esc(s.path)}</code></td><td>${esc(s.kind)}</td><td>${esc(s.usage)}</td><td>${esc(s.scope)}</td><td class="r">${num(s.tokens)}</td><td>${esc(s.confidence)}</td></tr>`,
+        `<tr><td><code>${esc(s.path)}</code></td><td>${esc(s.kind)}</td><td>${esc(s.usage)}</td><td>${esc(s.scope)}</td><td>${esc(s.consumers.join(", "))}</td><td class="r">${num(s.tokens)}</td><td>${esc(s.confidence)}</td></tr>`,
     )
     .join("\n");
 
@@ -88,20 +106,29 @@ export function renderHtml(report: Report, cfg: Config): string {
 <table>
 <tr><th>Source kind</th><th class="r">Tokens</th></tr>
 ${kindRows}
-<tr class="total"><td>Repo baseline (CI-gated)</td><td class="r">${num(totals.gatedBaseline)}</td></tr>
+<tr class="total"><td>Repo total (CI-gated)</td><td class="r">${num(totals.gatedBaseline)}</td></tr>
 ${totals.globalBaseline > 0 ? `<tr><td>Global user files (not gated)</td><td class="r">${num(totals.globalBaseline)}</td></tr>` : ""}
-<tr class="total"><td>Total baseline</td><td class="r">${num(totals.guaranteed)}</td></tr>
 </table>
+
+<h2>Per-tool baselines</h2>
+<p class="muted">Each tool loads only its own sources; per-request numbers below are per tool. The repo total is what the repo ships, not what any single request loads.</p>
+<table>
+<tr><th>Tool</th><th class="r">Repo</th><th class="r">Global</th><th class="r">Tool overhead</th><th class="r">Total baseline</th></tr>
+${consumerRows}
+</table>
+<p class="muted">Tool overhead = the tool's own system prompt + built-in tool definitions, loaded before any repo file. Shipped estimates as of ${esc(meta.systemOverheadAsOf)}; override via config.systemOverheadTokens.</p>
 
 <h2>Estimated cost per request (baseline input only)</h2>
 <table>
-<tr><th>Model</th><th class="r">Uncached</th><th class="r">With caching (typical)</th></tr>
+<tr><th>Tool</th><th>Model</th><th class="r">Uncached</th><th class="r">With caching (typical)</th></tr>
 ${costRows}
 </table>
 <p class="muted">${esc(meta.cacheFormula)}</p>
 
 <h2>Typical full-request range</h2>
-<p class="big">${num(report.requestRange.min)}&ndash;${num(report.requestRange.max)} input tokens</p>
+<ul>
+${rangeItems}
+</ul>
 <p class="muted">Baseline + conversation history (${num(cfg.variable.conversationHistory[0])}&ndash;${num(cfg.variable.conversationHistory[1])}) + task files (${num(cfg.variable.taskFiles[0])}&ndash;${num(cfg.variable.taskFiles[1])}). Ranges, not measurements.</p>
 
 <h2>High-impact findings</h2>
@@ -111,7 +138,7 @@ ${findingItems}
 
 <h2>All discovered sources</h2>
 <table>
-<tr><th>Path</th><th>Kind</th><th>Usage</th><th>Scope</th><th class="r">Tokens</th><th>Confidence</th></tr>
+<tr><th>Path</th><th>Kind</th><th>Usage</th><th>Scope</th><th>Tools</th><th class="r">Tokens</th><th>Confidence</th></tr>
 ${sourceRows}
 </table>
 

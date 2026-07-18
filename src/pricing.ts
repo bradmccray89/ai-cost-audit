@@ -73,14 +73,28 @@ export function resolveModels(cfg: Config): ModelPricing[] {
         note: "unknown model — set pricing via config.pricingOverrides",
       };
     }
+    // Custom models default to an "unknown" provider (calibration 1.0, no cache
+    // modeling); override.provider attaches them to a known provider's
+    // calibration and cache behavior.
     return {
       id,
-      provider: base?.provider ?? "unknown",
+      provider: override?.provider ?? base?.provider ?? "unknown",
       inputPerMTok: override?.inputPerMTok ?? base?.inputPerMTok ?? null,
       outputPerMTok: override?.outputPerMTok ?? base?.outputPerMTok ?? null,
       note: base?.note,
     };
   });
+}
+
+/**
+ * Every provider a cost figure could be computed for: the configured provider
+ * list plus any provider referenced by a resolved model. Without the union,
+ * a custom model with pricing set silently gets no baseline (and no cost).
+ */
+export function relevantProviders(cfg: Config): string[] {
+  const providers = new Set(cfg.providers);
+  for (const model of resolveModels(cfg)) providers.add(model.provider);
+  return [...providers];
 }
 
 /** Resolve provider info (calibration + cache), applying config calibration overrides. */

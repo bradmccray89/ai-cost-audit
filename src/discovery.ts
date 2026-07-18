@@ -1,6 +1,7 @@
 import { readFile } from "node:fs/promises";
 import { existsSync, statSync } from "node:fs";
 import path from "node:path";
+import picomatch from "picomatch";
 
 /**
  * Follow local references out of an instruction file:
@@ -34,9 +35,11 @@ export async function followReferences(
   rootText: string,
   projectPath: string,
   maxDepth: number,
+  exclude: string[] = [],
 ): Promise<ReferencedFile[]> {
   const found: ReferencedFile[] = [];
   const visited = new Set<string>([path.resolve(rootFile)]);
+  const isExcluded = excludeMatcher(exclude);
 
   let frontier: { file: string; text: string }[] = [{ file: rootFile, text: rootText }];
 
@@ -51,6 +54,7 @@ export async function followReferences(
           (c) => existsSync(c) && statSync(c).isFile() && insideProject(c, projectPath),
         );
         if (!resolved || visited.has(resolved)) continue;
+        if (isExcluded(displayPath(resolved, projectPath))) continue;
         visited.add(resolved);
         try {
           const refText = await readFile(resolved, "utf8");
@@ -72,8 +76,23 @@ function insideProject(absPath: string, projectPath: string): boolean {
   return !rel.startsWith("..") && !path.isAbsolute(rel);
 }
 
-/** Repo-relative display path; falls back to absolute for out-of-repo files. */
+/**
+ * Repo-relative display path; falls back to absolute for out-of-repo files.
+ * Always forward-slash separated, so reports, findings, and committed
+ * snapshots are identical across Windows and POSIX machines.
+ */
 export function displayPath(absPath: string, projectPath: string): string {
   const rel = path.relative(path.resolve(projectPath), absPath);
-  return rel.startsWith("..") ? absPath : rel;
+  return toPosix(rel.startsWith("..") ? absPath : rel);
+}
+
+export function toPosix(p: string): string {
+  return p.split(path.sep).join("/");
+}
+
+/** Matcher over repo-relative posix paths for config.scan.exclude globs. */
+export function excludeMatcher(patterns: string[]): (relPath: string) => boolean {
+  if (patterns.length === 0) return () => false;
+  const matchers = patterns.map((pattern) => picomatch(pattern, { dot: true }));
+  return (relPath) => matchers.some((m) => m(relPath));
 }

@@ -10,6 +10,7 @@ function src(path: string, tokens: number): ContextSource {
     kind: "repo-instructions",
     usage: "guaranteed",
     scope: "repo",
+    consumers: ["claude-code"],
     tokens,
     confidence: "high",
     text: "",

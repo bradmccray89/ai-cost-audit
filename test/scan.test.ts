@@ -10,7 +10,8 @@ describe("runScan (integration on fixture repo)", () => {
 
     // Claude Code sources
     expect(paths).toContain("CLAUDE.md");
-    expect(paths).toContain(".claude/agents/backend-reviewer.md");
+    expect(paths).toContain(".claude/agents/backend-reviewer.md (description)");
+    expect(paths).toContain(".claude/agents/backend-reviewer.md (body)");
     expect(paths).toContain(".claude/skills/deploy/SKILL.md (description)");
     expect(paths).toContain(".claude/skills/deploy/SKILL.md (body)");
     expect(paths).toContain(".claude/commands/changelog.md");
@@ -99,15 +100,142 @@ describe("runScan (integration on fixture repo)", () => {
     expect(github?.confidence).toBe("medium");
   });
 
-  it("produces a request range above the baseline", async () => {
+  it("produces per-tool request ranges above each tool's baseline", async () => {
     const cfg = await makeConfig();
     const { report } = await runScan(SAMPLE_REPO, cfg, null);
-    expect(report.requestRange.min).toBe(
-      report.totals.guaranteed + 8000 + 5000,
-    );
-    expect(report.requestRange.max).toBe(
-      report.totals.guaranteed + 25000 + 15000,
-    );
+    for (const [consumer, totals] of Object.entries(report.totals.byConsumer)) {
+      expect(report.requestRanges[consumer]!.min).toBe(totals.total + 8000 + 5000);
+      expect(report.requestRanges[consumer]!.max).toBe(totals.total + 25000 + 15000);
+    }
+  });
+
+  it("computes per-tool baselines from each tool's own sources", async () => {
+    const cfg = await makeConfig();
+    const { report } = await runScan(SAMPLE_REPO, cfg, null);
+    const { byConsumer } = report.totals;
+    const sumFor = (consumer: string) =>
+      report.sources
+        .filter(
+          (s) =>
+            s.usage === "guaranteed" &&
+            s.scope === "repo" &&
+            s.consumers.includes(consumer as never),
+        )
+        .reduce((total, s) => total + s.tokens, 0);
+
+    for (const consumer of ["claude-code", "cursor", "copilot"]) {
+      expect(byConsumer[consumer]!.gated).toBe(sumFor(consumer));
+    }
+    // AGENTS.md is shared; the rest is tool-specific, so no per-tool baseline
+    // equals the cross-tool union.
+    expect(byConsumer["claude-code"]!.gated).toBeLessThan(report.totals.gatedBaseline);
+    expect(byConsumer["cursor"]!.gated).toBeLessThan(report.totals.gatedBaseline);
+    // AGENTS.md lands in every tool's baseline.
+    const agentsMd = report.sources.find((s) => s.path === "AGENTS.md");
+    expect(agentsMd?.consumers.sort()).toEqual(["claude-code", "copilot", "cursor"]);
+  });
+
+  it("includes shipped system overhead in per-tool totals", async () => {
+    const cfg = await makeConfig();
+    const { report } = await runScan(SAMPLE_REPO, cfg, null);
+    const claude = report.totals.byConsumer["claude-code"]!;
+    expect(claude.systemOverhead).toBe(15_000);
+    expect(claude.total).toBe(claude.guaranteed + 15_000);
+    // Cost figures are computed from the total, not the file-only baseline:
+    // 15k+ tokens of overhead dominates this small fixture repo.
+    const cost = report.costs.find(
+      (c) => c.consumer === "claude-code" && c.model === "claude-opus-4-8",
+    )!;
+    expect(cost.perRequestUncached!).toBeGreaterThan((15_000 / 1_000_000) * 5.0);
+  });
+
+  it("respects systemOverheadTokens overrides, including 0 to exclude", async () => {
+    const cfg = await makeConfig({
+      systemOverheadTokens: { "claude-code": 0, cursor: 12_345 },
+    });
+    const { report } = await runScan(SAMPLE_REPO, cfg, null);
+    const claude = report.totals.byConsumer["claude-code"]!;
+    expect(claude.systemOverhead).toBe(0);
+    expect(claude.total).toBe(claude.guaranteed);
+    expect(report.totals.byConsumer["cursor"]!.systemOverhead).toBe(12_345);
+    // Copilot keeps the shipped default.
+    expect(report.totals.byConsumer["copilot"]!.systemOverhead).toBe(4_000);
+  });
+
+  it("keeps system overhead out of the CI-gated baseline", async () => {
+    const cfg = await makeConfig();
+    const { report } = await runScan(SAMPLE_REPO, cfg, null);
+    const repoGuaranteed = report.sources
+      .filter((s) => s.scope === "repo" && s.usage === "guaranteed")
+      .reduce((sum, s) => sum + s.tokens, 0);
+    expect(report.totals.gatedBaseline).toBe(repoGuaranteed);
+  });
+
+  it("emits costs per consumer", async () => {
+    const cfg = await makeConfig();
+    const { report } = await runScan(SAMPLE_REPO, cfg, null);
+    const consumers = [...new Set(report.costs.map((c) => c.consumer))];
+    expect(consumers.sort()).toEqual(["claude-code", "copilot", "cursor"]);
+    // Smaller baseline -> cheaper request: copilot only loads AGENTS.md here.
+    const claudeCost = report.costs.find(
+      (c) => c.consumer === "claude-code" && c.model === "claude-opus-4-8",
+    )!;
+    const copilotCost = report.costs.find(
+      (c) => c.consumer === "copilot" && c.model === "claude-opus-4-8",
+    )!;
+    expect(copilotCost.perRequestUncached!).toBeLessThan(claudeCost.perRequestUncached!);
+  });
+
+  it("respects scan.exclude for discovered sources", async () => {
+    const cfg = await makeConfig({
+      scan: { exclude: ["**/node_modules/**", ".claude/agents/**", "docs/**"] },
+    });
+    const { report } = await runScan(SAMPLE_REPO, cfg, null);
+    const paths = report.sources.map((s) => s.path);
+    expect(paths.some((p) => p.includes(".claude/agents/"))).toBe(false);
+    expect(paths).not.toContain("docs/standards.md");
+    expect(paths).toContain("CLAUDE.md");
+  });
+
+  it("prices custom models via pricingOverrides", async () => {
+    const cfg = await makeConfig({
+      models: ["my-fine-tune"],
+      pricingOverrides: { "my-fine-tune": { inputPerMTok: 2 } },
+    });
+    const { report } = await runScan(SAMPLE_REPO, cfg, null);
+    const cost = report.costs.find((c) => c.model === "my-fine-tune");
+    expect(cost).toBeDefined();
+    expect(cost!.perRequestUncached).not.toBeNull();
+    expect(cost!.perRequestUncached!).toBeGreaterThan(0);
+  });
+
+  it("attaches custom models to a known provider via pricingOverrides.provider", async () => {
+    const cfg = await makeConfig({
+      models: ["my-fine-tune"],
+      pricingOverrides: { "my-fine-tune": { inputPerMTok: 2, provider: "anthropic" } },
+    });
+    const { report } = await runScan(SAMPLE_REPO, cfg, null);
+    const cost = report.costs.find((c) => c.model === "my-fine-tune")!;
+    expect(cost.provider).toBe("anthropic");
+    // Anthropic provider has cache modeling, so the cached figure exists.
+    expect(cost.perRequestCached).not.toBeNull();
+  });
+
+  it("counts agent descriptions as guaranteed and bodies as conditional", async () => {
+    const cfg = await makeConfig();
+    const { report } = await runScan(SAMPLE_REPO, cfg, null);
+    const description = report.sources.find((s) => s.kind === "agent-description");
+    const body = report.sources.find((s) => s.kind === "agent");
+    expect(description?.usage).toBe("guaranteed");
+    expect(body?.usage).toBe("conditional");
+  });
+
+  it("emits only forward-slash paths on every platform", async () => {
+    const cfg = await makeConfig();
+    const { report } = await runScan(SAMPLE_REPO, cfg, null);
+    for (const s of report.sources) {
+      expect(s.path).not.toContain("\\");
+    }
   });
 
   it("includes the honesty metadata", async () => {

@@ -3,6 +3,13 @@ export type Confidence = "high" | "medium" | "low";
 export type Scope = "repo" | "global";
 export type Severity = "info" | "warn" | "error";
 
+/**
+ * A tool that actually loads context sources. Baselines and costs are computed
+ * per consumer: no single request ever loads CLAUDE.md AND Cursor rules AND
+ * Copilot instructions, so summing across tools inflates every estimate.
+ */
+export type Consumer = "claude-code" | "cursor" | "copilot";
+
 export interface ContextSource {
   /** Repo-relative path; global files are prefixed with "~". */
   path: string;
@@ -12,6 +19,7 @@ export interface ContextSource {
     | "local-instructions"
     | "global-instructions"
     | "agent"
+    | "agent-description"
     | "skill-description"
     | "skill-body"
     | "command"
@@ -21,6 +29,8 @@ export interface ContextSource {
     | "referenced-doc";
   usage: Usage;
   scope: Scope;
+  /** Tools that load this source into context. */
+  consumers: Consumer[];
   /** Calibrated token estimate for this source. */
   tokens: number;
   confidence: Confidence;
@@ -67,6 +77,8 @@ export interface ProviderInfo {
 }
 
 export interface ModelCost {
+  /** The tool whose baseline this cost is computed from. */
+  consumer: Consumer;
   model: string;
   provider: string;
   /** USD per request, baseline input only, no caching. */
@@ -79,13 +91,35 @@ export interface ModelCost {
   runwayDays: number | null;
 }
 
+export interface ConsumerTotals {
+  /** Repo-scoped guaranteed tokens this tool loads. */
+  gated: number;
+  /** Global (user-level) guaranteed tokens this tool loads. */
+  global: number;
+  /** gated + global — the file-derived portion of this tool's baseline. */
+  guaranteed: number;
+  /**
+   * The tool's own system prompt + built-in tool definitions — loaded before
+   * any repo file. Shipped estimate, overridable via config.systemOverheadTokens.
+   */
+  systemOverhead: number;
+  /** guaranteed + systemOverhead — the baseline cost estimates are computed from. */
+  total: number;
+}
+
 export interface ReportTotals {
-  /** Repo-scoped guaranteed tokens — the CI-gated number. */
+  /**
+   * Union of repo-scoped guaranteed tokens across all tools — the CI-gated
+   * number. This is what the repo ships, not what any one request loads;
+   * per-request numbers live in byConsumer.
+   */
   gatedBaseline: number;
-  /** Global (user-level) guaranteed tokens, reported but not gated. */
+  /** Union of global (user-level) guaranteed tokens, reported but not gated. */
   globalBaseline: number;
   guaranteed: number;
   conditional: number;
+  /** Per-tool baselines — the numbers cost estimates are computed from. */
+  byConsumer: Record<string, ConsumerTotals>;
   byKind: Record<string, number>;
   byAdapter: Record<string, number>;
 }
@@ -98,6 +132,8 @@ export interface Report {
     projectPath: string;
     pricingAsOf: string;
     pricingStale: boolean;
+    /** Date stamp of the shipped per-tool system-overhead estimates. */
+    systemOverheadAsOf: string;
     calibration: Record<string, number>;
     cacheFormula: string;
     disclosure: string;
@@ -105,7 +141,8 @@ export interface Report {
   totals: ReportTotals;
   sources: Omit<ContextSource, "text">[];
   costs: ModelCost[];
-  requestRange: { min: number; max: number };
+  /** Per-tool typical full-request token range (baseline + variable context). */
+  requestRanges: Record<string, { min: number; max: number }>;
   findings: Finding[];
 }
 
@@ -132,10 +169,15 @@ export interface Config {
   cache: { enabled: boolean; requestsPerSession: number };
   variable: { conversationHistory: [number, number]; taskFiles: [number, number] };
   calibration: Record<string, number>;
-  pricingOverrides: Record<string, { inputPerMTok: number; outputPerMTok?: number }>;
+  /** Per-tool override of the shipped system-overhead estimates. 0 excludes it. */
+  systemOverheadTokens: Record<string, number>;
+  pricingOverrides: Record<
+    string,
+    { inputPerMTok: number; outputPerMTok?: number; provider?: string }
+  >;
   mcp: { knownSchemaTokens: Record<string, number> };
   duplication: { minBlockTokens: number; similarityThreshold: number };
-  scan: { include: string[]; exclude: string[] };
+  scan: { exclude: string[] };
   refDepth: number;
   includeGlobal: boolean;
 }

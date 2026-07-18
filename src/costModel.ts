@@ -1,4 +1,4 @@
-import type { Config, ModelCost } from "./types.js";
+import type { Config, Consumer, ModelCost } from "./types.js";
 import { resolveModels, resolveProvider } from "./pricing.js";
 
 /**
@@ -26,12 +26,12 @@ export function cacheFormulaDescription(cfg: Config): string {
 }
 
 /**
- * Cost of the guaranteed baseline, per model. Input-side only — baseline
- * context is always input. `gatedTokens` are the calibrated Anthropic-basis
- * estimates; for non-anthropic providers we re-derive from the raw basis via
- * the provider's own calibration handled upstream (tokens passed per provider).
+ * Cost of one consumer's guaranteed baseline, per model. Input-side only —
+ * baseline context is always input. Token counts are passed per provider
+ * (each provider's own calibration applied upstream).
  */
 export function computeCosts(
+  consumer: Consumer,
   baselineTokensByProvider: Record<string, number>,
   cfg: Config,
 ): ModelCost[] {
@@ -39,6 +39,7 @@ export function computeCosts(
     const tokens = baselineTokensByProvider[model.provider] ?? null;
     if (tokens === null || model.inputPerMTok === null) {
       return {
+        consumer,
         model: model.id,
         provider: model.provider,
         perRequestUncached: null,
@@ -83,6 +84,7 @@ export function computeCosts(
     }
 
     return {
+      consumer,
       model: model.id,
       provider: model.provider,
       perRequestUncached,

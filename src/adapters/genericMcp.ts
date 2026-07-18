@@ -3,6 +3,7 @@ import { existsSync } from "node:fs";
 import path from "node:path";
 import type { Config, ContextAdapter, ContextSource } from "../types.js";
 import { estimateTokens } from "../tokenizer.js";
+import { excludeMatcher } from "../discovery.js";
 
 /**
  * Generic MCP adapter: parses .mcp.json / mcp.json server configs.
@@ -18,10 +19,11 @@ export const genericMcpAdapter: ContextAdapter = {
 
   async discover(projectPath: string, cfg: Config): Promise<ContextSource[]> {
     const sources: ContextSource[] = [];
+    const isExcluded = excludeMatcher(cfg.scan.exclude);
 
     for (const filename of [".mcp.json", "mcp.json"]) {
       const absPath = path.join(projectPath, filename);
-      if (!existsSync(absPath)) continue;
+      if (!existsSync(absPath) || isExcluded(filename)) continue;
 
       let text: string;
       try {
@@ -41,6 +43,7 @@ export const genericMcpAdapter: ContextAdapter = {
           kind: "mcp-config",
           usage: "guaranteed",
           scope: "repo",
+          consumers: ["claude-code"],
           tokens: estimateTokens(text, "anthropic", cfg),
           confidence: "low",
           note: "file is not valid JSON; counted raw",
@@ -62,6 +65,7 @@ export const genericMcpAdapter: ContextAdapter = {
             kind: "mcp-config",
             usage: "guaranteed",
             scope: "repo",
+            consumers: ["claude-code"],
             tokens: known,
             confidence: "medium",
             note: "schema size pinned via config.mcp.knownSchemaTokens",
@@ -74,6 +78,7 @@ export const genericMcpAdapter: ContextAdapter = {
             kind: "mcp-config",
             usage: "guaranteed",
             scope: "repo",
+            consumers: ["claude-code"],
             tokens: estimateTokens(configJson, "anthropic", cfg),
             confidence: "low",
             note:

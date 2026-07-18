@@ -27,18 +27,31 @@ npx ai-cost-audit scan
 | Source kind                       | Tokens |
 |-----------------------------------|-------:|
 | Repository instructions           | 9,140  |
-| Agent definitions                 | 12,870 |
+| Agent descriptions (always loaded)| 870    |
 | MCP configuration                 | 31,260 |
 | Referenced documentation          | 7,890  |
-| **Repo baseline (CI-gated)**      | **61,160** |
+| **Repo total (CI-gated)**         | **49,160** |
 | Global user files (not gated)     | 18,420 |
-| **Total baseline**                | **79,580** |
+
+## Per-tool baselines
+
+No single request loads every source — each tool loads only its own. Costs are
+computed per tool, never from the cross-tool union. Tool overhead is the tool's
+system prompt + built-in tool definitions, loaded before any repo file.
+
+| Tool           | Repo   | Global | Tool overhead | Total baseline |
+|----------------|-------:|-------:|--------------:|---------------:|
+| Claude Code    | 48,270 | 18,420 |        15,000 | **81,690** |
+| Cursor         |  3,980 |      0 |         9,000 | **12,980** |
+| GitHub Copilot |  2,150 |      0 |         4,000 |  **6,150** |
 
 ## Estimated cost per request (baseline input only)
 
+Claude Code (baseline 81,690 tokens)
+
 | Model           | Uncached | With caching (typical) |
 |-----------------|---------:|-----------------------:|
-| claude-opus-4-8 | $0.40    | $0.09                  |
+| claude-opus-4-8 | $0.41    | $0.09                  |
 
 At 200 requests/day per developer (3 developers), your $100/month budget lasts ~1.9 days.
 
@@ -54,14 +67,18 @@ At 200 requests/day per developer (3 developers), your $100/month budget lasts ~
 
 | Adapter | Sources | Classification |
 |---|---|---|
-| **claude-code** | `CLAUDE.md`, `CLAUDE.local.md`, `~/.claude/CLAUDE.md`, `.claude/agents/`, `.claude/skills/`, `.claude/commands/`, files pulled in via `@imports` and local links | Skills are split: descriptions load every session (**guaranteed**), bodies load on demand (**conditional**) |
+| **claude-code** | `CLAUDE.md`, `CLAUDE.local.md`, `~/.claude/CLAUDE.md`, `.claude/agents/`, `.claude/skills/`, `.claude/commands/`, files pulled in via `@imports` and local links | Skills and agents are split: descriptions load every session (**guaranteed**), bodies load on demand (**conditional**) |
 | **generic-mcp** | `.mcp.json`, `mcp.json` | Configured server JSON counted; live tool schemas flagged as unmeasured (see Honesty below) |
 | **instructions** | `AGENTS.md`, `.cursor/rules/*.mdc`, `.cursorrules` (legacy), `.github/copilot-instructions.md`, `.github/**/*.instructions.md` | By tool convention |
 
-Sources are bucketed three ways, and the report never pretends otherwise:
+Every source is tagged with the **tools that actually load it** (Claude Code,
+Cursor, GitHub Copilot; `AGENTS.md` counts for all three). Baselines, costs, and
+request ranges are reported per tool, because no single request crosses tools.
+
+Sources are also bucketed three ways, and the report never pretends otherwise:
 
 - **guaranteed** — loads on every request; measured from files.
-- **conditional** — loads for some tasks (skills, commands, path-scoped rules); measured, reported separately.
+- **conditional** — loads for some tasks (skills, commands, agent bodies, path-scoped rules); measured, reported separately.
 - **variable** — conversation history, task files; **shown as configurable ranges, never point estimates**.
 
 ## CI budget gate
@@ -108,9 +125,21 @@ Drop an `ai-cost-audit.json` in your repo root (all fields optional — zero-con
     "taskFiles": [5000, 15000]
   },
   "mcp": { "knownSchemaTokens": { "github": 12000 } },
-  "pricingOverrides": { "gpt": { "inputPerMTok": 2.5 } }
+  "pricingOverrides": {
+    "gpt": { "inputPerMTok": 2.5 },
+    "my-fine-tune": { "inputPerMTok": 2.0, "provider": "anthropic" }
+  },
+  "systemOverheadTokens": { "claude-code": 18000, "copilot": 0 },
+  "scan": { "exclude": ["**/node_modules/**", "test/fixtures/**"] }
 }
 ```
+
+`pricingOverrides` prices any model id, seeded or custom. The optional
+`provider` field attaches a custom model to a known provider's tokenizer
+calibration and cache modeling (otherwise: calibration 1.0, no cache model).
+`systemOverheadTokens` replaces the shipped per-tool overhead estimates
+(set 0 to exclude a tool's overhead).
+`scan.exclude` globs are honored by all adapters and by `@import`/link following.
 
 ## CLI
 
@@ -152,6 +181,12 @@ input-side only; output tokens depend on what the model generates and are out of
   measure. We count the configured JSON, flag every server `confidence: low`, and let
   you pin measured sizes via `mcp.knownSchemaTokens`. The real number is usually
   *much* larger — treat MCP lines as a floor, not a measurement.
+- **Per-tool system overhead is a shipped estimate.** Each tool's system prompt
+  and built-in tool definitions (often the majority of real guaranteed context)
+  are counted via date-stamped constants, disclosed in every report and
+  overridable via `systemOverheadTokens`. They vary by tool version and enabled
+  features. Overhead is never part of the CI-gated number — the gate covers only
+  content your repo controls.
 - **Variable context is shown as ranges** you configure, never fake-precise numbers.
 - **Pricing is date-stamped.** If the built-in table is more than 90 days old, the
   report warns you to verify and override via `pricingOverrides`.

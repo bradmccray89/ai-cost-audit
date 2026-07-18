@@ -1,7 +1,7 @@
 import { readFile } from "node:fs/promises";
 import path from "node:path";
 import fg from "fast-glob";
-import type { Config, ContextAdapter, ContextSource } from "../types.js";
+import type { Config, Consumer, ContextAdapter, ContextSource } from "../types.js";
 import { estimateTokens } from "../tokenizer.js";
 
 /**
@@ -18,6 +18,7 @@ export const instructionsAdapter: ContextAdapter = {
       relPath: string,
       kind: ContextSource["kind"],
       usage: ContextSource["usage"],
+      consumers: Consumer[],
       confidence: ContextSource["confidence"],
       note?: string,
     ) => {
@@ -33,6 +34,7 @@ export const instructionsAdapter: ContextAdapter = {
         kind,
         usage,
         scope: "repo",
+        consumers,
         tokens: estimateTokens(text, "anthropic", cfg),
         confidence,
         note,
@@ -41,10 +43,24 @@ export const instructionsAdapter: ContextAdapter = {
     };
 
     const glob = (pattern: string) =>
-      fg(pattern, { cwd: projectPath, dot: true, onlyFiles: true }).then((r) => r.sort());
+      fg(pattern, {
+        cwd: projectPath,
+        dot: true,
+        onlyFiles: true,
+        ignore: cfg.scan.exclude,
+      }).then((r) => r.sort());
 
+    // AGENTS.md is the cross-tool convention: Claude Code, Cursor, and Copilot
+    // all read it, so it lands in every consumer's baseline.
     for (const file of await glob("AGENTS.md")) {
-      await add(file, "repo-instructions", "guaranteed", "high", "loaded by AGENTS.md-aware tools");
+      await add(
+        file,
+        "repo-instructions",
+        "guaranteed",
+        ["claude-code", "cursor", "copilot"],
+        "high",
+        "loaded by AGENTS.md-aware tools (Claude Code, Cursor, Copilot)",
+      );
     }
 
     // Modern Cursor rules. .mdc frontmatter can scope rules to globs/manual
@@ -54,6 +70,7 @@ export const instructionsAdapter: ContextAdapter = {
         file,
         "cursor-rules",
         "guaranteed",
+        ["cursor"],
         "medium",
         "Cursor rule; may be glob-scoped or manual (frontmatter not parsed in v1)",
       );
@@ -65,13 +82,21 @@ export const instructionsAdapter: ContextAdapter = {
         file,
         "cursor-rules",
         "guaranteed",
+        ["cursor"],
         "high",
         "legacy .cursorrules format (Cursor now uses .cursor/rules/*.mdc)",
       );
     }
 
     for (const file of await glob(".github/copilot-instructions.md")) {
-      await add(file, "copilot-instructions", "guaranteed", "high", "loaded on every Copilot chat request");
+      await add(
+        file,
+        "copilot-instructions",
+        "guaranteed",
+        ["copilot"],
+        "high",
+        "loaded on every Copilot chat request",
+      );
     }
 
     // Path-scoped Copilot instruction files apply only to matching files.
@@ -80,6 +105,7 @@ export const instructionsAdapter: ContextAdapter = {
         file,
         "copilot-instructions",
         "conditional",
+        ["copilot"],
         "medium",
         "path-scoped Copilot instructions; loads when matching files are in play",
       );

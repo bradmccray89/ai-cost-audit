@@ -28,11 +28,13 @@ const configSchema = z
       })
       .default({}),
     calibration: z.record(z.number().positive()).default({}),
+    systemOverheadTokens: z.record(z.number().nonnegative()).default({}),
     pricingOverrides: z
       .record(
         z.object({
           inputPerMTok: z.number().nonnegative(),
           outputPerMTok: z.number().nonnegative().optional(),
+          provider: z.string().optional(),
         }),
       )
       .default({}),
@@ -49,21 +51,6 @@ const configSchema = z
       .default({}),
     scan: z
       .object({
-        include: z
-          .array(z.string())
-          .default([
-            "CLAUDE.md",
-            "CLAUDE.local.md",
-            "AGENTS.md",
-            ".github/copilot-instructions.md",
-            ".github/**/*.instructions.md",
-            ".claude/**/*",
-            ".cursor/rules/**/*",
-            ".cursorrules",
-            ".mcp.json",
-            "mcp.json",
-            "prompts/**/*",
-          ]),
         exclude: z.array(z.string()).default(["**/node_modules/**", "**/dist/**", "**/.git/**"]),
       })
       .default({}),

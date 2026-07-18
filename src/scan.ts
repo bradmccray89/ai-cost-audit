@@ -1,10 +1,11 @@
 import path from "node:path";
-import type { Config, ContextSource, Report, Snapshot } from "./types.js";
+import type { Config, ConsumerTotals, ContextSource, Report, Snapshot } from "./types.js";
+import { CONSUMER_ORDER, resolveSystemOverhead, SYSTEM_OVERHEAD_AS_OF } from "./consumers.js";
 import { discoverAll } from "./adapters/index.js";
 import { findDuplicates } from "./analysis/duplication.js";
 import { deriveFindings } from "./analysis/findings.js";
 import { computeCosts, cacheFormulaDescription } from "./costModel.js";
-import { isPricingStale, PRICING_AS_OF, resolveProvider } from "./pricing.js";
+import { isPricingStale, PRICING_AS_OF, relevantProviders, resolveProvider } from "./pricing.js";
 import { DISCLOSURE } from "./tokenizer.js";
 
 export const TOOL_NAME = "ai-cost-audit";
@@ -40,28 +41,67 @@ export async function runScan(
     byAdapter[s.adapter] = (byAdapter[s.adapter] ?? 0) + s.tokens;
   }
 
-  // Source tokens are estimated on the anthropic calibration basis. Re-derive
-  // per-provider baselines by backing out to the raw o200k count.
-  const anthropicCalibration = resolveProvider("anthropic", cfg).calibration;
-  const rawBaseline = guaranteed / anthropicCalibration;
-  const baselineByProvider: Record<string, number> = {};
-  for (const provider of cfg.providers) {
-    baselineByProvider[provider] = Math.round(
-      rawBaseline * resolveProvider(provider, cfg).calibration,
-    );
+  // Per-tool baselines: a request goes through exactly one tool, so costs and
+  // request ranges are computed from each consumer's own baseline, never from
+  // the cross-tool union.
+  const consumersPresent = CONSUMER_ORDER.filter((consumer) =>
+    sources.some((s) => s.consumers.includes(consumer)),
+  );
+  const byConsumer: Record<string, ConsumerTotals> = {};
+  for (const consumer of consumersPresent) {
+    const gated = sum(repoGuaranteed.filter((s) => s.consumers.includes(consumer)));
+    const global = sum(globalGuaranteed.filter((s) => s.consumers.includes(consumer)));
+    const guaranteed = gated + global;
+    const systemOverhead = resolveSystemOverhead(consumer, cfg);
+    byConsumer[consumer] = {
+      gated,
+      global,
+      guaranteed,
+      systemOverhead,
+      total: guaranteed + systemOverhead,
+    };
   }
+
+  // Source tokens are estimated on the anthropic calibration basis. Re-derive
+  // per-provider baselines by backing out to the raw o200k count. System
+  // overhead is a native-token estimate, so it joins after calibration.
+  const anthropicCalibration = resolveProvider("anthropic", cfg).calibration;
+  const providers = relevantProviders(cfg);
+  const baselineForProviders = (
+    fileTokens: number,
+    overheadTokens: number,
+  ): Record<string, number> => {
+    const raw = fileTokens / anthropicCalibration;
+    const result: Record<string, number> = {};
+    for (const provider of providers) {
+      result[provider] =
+        Math.round(raw * resolveProvider(provider, cfg).calibration) + overheadTokens;
+    }
+    return result;
+  };
 
   const duplicates = findDuplicates(sources, cfg);
   const findings = deriveFindings(sources, duplicates, gatedBaseline, snapshot, cfg);
-  const costs = computeCosts(baselineByProvider, cfg);
+  const costs = consumersPresent.flatMap((consumer) => {
+    const totals = byConsumer[consumer]!;
+    return computeCosts(
+      consumer,
+      baselineForProviders(totals.guaranteed, totals.systemOverhead),
+      cfg,
+    );
+  });
 
-  const requestRange = {
-    min: guaranteed + cfg.variable.conversationHistory[0] + cfg.variable.taskFiles[0],
-    max: guaranteed + cfg.variable.conversationHistory[1] + cfg.variable.taskFiles[1],
-  };
+  const requestRanges: Record<string, { min: number; max: number }> = {};
+  for (const consumer of consumersPresent) {
+    const base = byConsumer[consumer]!.total;
+    requestRanges[consumer] = {
+      min: base + cfg.variable.conversationHistory[0] + cfg.variable.taskFiles[0],
+      max: base + cfg.variable.conversationHistory[1] + cfg.variable.taskFiles[1],
+    };
+  }
 
   const calibration: Record<string, number> = {};
-  for (const provider of cfg.providers) {
+  for (const provider of providers) {
     calibration[provider] = resolveProvider(provider, cfg).calibration;
   }
 
@@ -73,6 +113,7 @@ export async function runScan(
       projectPath: path.resolve(projectPath),
       pricingAsOf: PRICING_AS_OF,
       pricingStale: isPricingStale(),
+      systemOverheadAsOf: SYSTEM_OVERHEAD_AS_OF,
       calibration,
       cacheFormula: cacheFormulaDescription(cfg),
       disclosure: DISCLOSURE,
@@ -82,12 +123,13 @@ export async function runScan(
       globalBaseline,
       guaranteed,
       conditional: sum(conditional),
+      byConsumer,
       byKind,
       byAdapter,
     },
     sources: sources.map(({ text: _text, ...rest }) => rest),
     costs,
-    requestRange,
+    requestRanges,
     findings,
   };
 

@@ -25,7 +25,7 @@ describe("computeCosts", () => {
       requestsPerDay: [100],
       monthlyBudget: null,
     });
-    const costs = computeCosts({ anthropic: 100_000 }, cfg);
+    const costs = computeCosts("claude-code", { anthropic: 100_000 }, cfg);
     expect(costs).toHaveLength(1);
     const c = costs[0]!;
     // 100k tokens at $5/MTok = $0.50 uncached.
@@ -43,7 +43,7 @@ describe("computeCosts", () => {
       requestsPerDay: [50, 200, 1000],
       monthlyBudget: 100,
     });
-    const costs = computeCosts({ anthropic: 100_000 }, cfg);
+    const costs = computeCosts("claude-code", { anthropic: 100_000 }, cfg);
     const c = costs[0]!;
     // Cached per request 0.1075; mid scenario 200 req/day -> $21.50/day.
     // Runway = 100 / 21.5 ≈ 4.651 days.
@@ -55,7 +55,7 @@ describe("computeCosts", () => {
       models: ["gpt"],
       providers: ["openai"],
     });
-    const costs = computeCosts({ openai: 100_000 }, cfg);
+    const costs = computeCosts("claude-code", { openai: 100_000 }, cfg);
     const c = costs[0]!;
     expect(c.perRequestUncached).toBeNull();
     expect(c.perRequestCached).toBeNull();
@@ -68,7 +68,7 @@ describe("computeCosts", () => {
       providers: ["anthropic"],
       cache: { enabled: false, requestsPerSession: 10 },
     });
-    const costs = computeCosts({ anthropic: 100_000 }, cfg);
+    const costs = computeCosts("claude-code", { anthropic: 100_000 }, cfg);
     expect(costs[0]!.perRequestCached).toBeNull();
   });
 });
