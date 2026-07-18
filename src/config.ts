@@ -3,6 +3,7 @@ import { existsSync } from "node:fs";
 import path from "node:path";
 import { z } from "zod";
 import type { Config } from "./types.js";
+import { DEFAULT_PRICING_URL } from "./pricingStore.js";
 
 const rangeSchema = z.tuple([z.number().nonnegative(), z.number().nonnegative()]);
 
@@ -41,6 +42,11 @@ const configSchema = z
     mcp: z
       .object({
         knownSchemaTokens: z.record(z.number().nonnegative()).default({}),
+      })
+      .default({}),
+    pricing: z
+      .object({
+        sourceUrl: z.string().url().default(DEFAULT_PRICING_URL),
       })
       .default({}),
     duplication: z

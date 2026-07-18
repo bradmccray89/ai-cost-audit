@@ -1,7 +1,7 @@
 import type { Config, Consumer, ModelCost, Report } from "../types.js";
 import { CONSUMER_LABELS, CONSUMER_ORDER } from "../consumers.js";
 
-const KIND_LABELS: Record<string, string> = {
+export const KIND_LABELS: Record<string, string> = {
   "repo-instructions": "Repository instructions",
   "local-instructions": "Local instructions",
   "global-instructions": "Global instructions (user)",
@@ -214,9 +214,9 @@ export function renderMarkdown(report: Report, cfg: Config): string {
   lines.push(
     `*Calibration factors (applied to o200k_base counts): ${Object.entries(meta.calibration)
       .map(([provider, factor]) => `${provider} ×${factor}`)
-      .join(", ")}. Pricing as of ${meta.pricingAsOf}` +
+      .join(", ")}. Pricing as of ${meta.pricingAsOf} (${meta.pricingOrigin}: ${meta.pricingSource})` +
       (meta.pricingStale
-        ? ` — **stale (>90 days old)**: verify current pricing and override via config.pricingOverrides`
+        ? ` — **stale (>90 days old)**: refresh with \`--refresh-pricing\` or override via config.pricingOverrides`
         : "") +
       `.*`,
   );

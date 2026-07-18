@@ -132,6 +132,10 @@ export interface Report {
     projectPath: string;
     pricingAsOf: string;
     pricingStale: boolean;
+    /** Where the prices came from: "bundled" or "remote". */
+    pricingOrigin: "bundled" | "remote";
+    /** The pricing source: a URL when refreshed, else the table's own source. */
+    pricingSource: string;
     /** Date stamp of the shipped per-tool system-overhead estimates. */
     systemOverheadAsOf: string;
     calibration: Record<string, number>;
@@ -176,6 +180,7 @@ export interface Config {
     { inputPerMTok: number; outputPerMTok?: number; provider?: string }
   >;
   mcp: { knownSchemaTokens: Record<string, number> };
+  pricing: { sourceUrl: string };
   duplication: { minBlockTokens: number; similarityThreshold: number };
   scan: { exclude: string[] };
   refDepth: number;

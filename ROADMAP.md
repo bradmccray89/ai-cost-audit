@@ -13,6 +13,12 @@ add new findings at the appropriate tier, not the bottom.
 - [x] Agent descriptions counted in guaranteed baseline (split like skills)
 - [x] Per-tool baselines — costs computed per consumer, never from the cross-tool union
 - [x] Per-tool system overhead constants (shipped, date-stamped, overridable)
+- [x] Readable terminal output — dedicated `term` format (aligned columns, color),
+      default on a TTY; piped/`-o` output stays plain markdown
+- [x] Pricing as dated data — `src/data/pricing.json` with `asOf` + per-model
+      effective-date ranges (fixes Sonnet 5 intro window by scan date), staleness
+      keyed to `asOf`, `--refresh-pricing` fetches from `pricing.sourceUrl` with
+      bundled fallback; reports disclose date + origin + source
 
 ## 1. Estimation correctness — the numbers must survive comparison with a real invoice
 
@@ -71,9 +77,14 @@ add new findings at the appropriate tier, not the bottom.
 
 - [ ] **CI matrix (Linux + Windows)** — the path-separator class of bug must not
       be able to return. No CI workflow exists yet at all.
-- [ ] **Pricing as versioned remote JSON** with the built-in table as offline
-      fallback (opt-in fetch preserves the offline promise). A 90-day staleness
-      warning otherwise makes every release look broken on a timer.
+- [ ] **Scheduled pricing-update PRs.** The data file + `--refresh-pricing` shipped
+      (see Done); what's left is keeping the hosted file fresh without a human
+      watching: a GitHub Action that parses Anthropic's published prices, diffs
+      against `pricing.json`, and opens a PR on change (open a PR for review, not
+      auto-merge — a page-layout change should fail loudly, not ship wrong numbers).
+      There is no official machine-readable Anthropic pricing feed, so the fetch
+      parses the docs page or a third-party feed; own the numbers, don't trust a
+      feed blindly.
 - [ ] **`TOOL_VERSION` drift** — `scan.ts` hardcodes 0.1.0 separately from
       package.json; read it at build time.
 - [ ] **Finding suppression** (`--ignore <rule>` / config) — needed before CI

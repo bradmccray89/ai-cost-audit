@@ -5,7 +5,8 @@ import { discoverAll } from "./adapters/index.js";
 import { findDuplicates } from "./analysis/duplication.js";
 import { deriveFindings } from "./analysis/findings.js";
 import { computeCosts, cacheFormulaDescription } from "./costModel.js";
-import { isPricingStale, PRICING_AS_OF, relevantProviders, resolveProvider } from "./pricing.js";
+import { isPricingStale, relevantProviders, resolveModels, resolveProvider } from "./pricing.js";
+import { bundledPricing, type ResolvedPricing } from "./pricingStore.js";
 import { DISCLOSURE } from "./tokenizer.js";
 
 export const TOOL_NAME = "ai-cost-audit";
@@ -20,7 +21,9 @@ export async function runScan(
   projectPath: string,
   cfg: Config,
   snapshot: Snapshot | null,
+  pricing: ResolvedPricing = { table: bundledPricing(), origin: "bundled", source: bundledPricing().source },
 ): Promise<ScanResult> {
+  const now = new Date();
   const sources = await discoverAll(projectPath, cfg);
 
   const repoGuaranteed = sources.filter((s) => s.scope === "repo" && s.usage === "guaranteed");
@@ -66,7 +69,8 @@ export async function runScan(
   // per-provider baselines by backing out to the raw o200k count. System
   // overhead is a native-token estimate, so it joins after calibration.
   const anthropicCalibration = resolveProvider("anthropic", cfg).calibration;
-  const providers = relevantProviders(cfg);
+  const models = resolveModels(cfg, pricing.table, now);
+  const providers = relevantProviders(cfg, models);
   const baselineForProviders = (
     fileTokens: number,
     overheadTokens: number,
@@ -88,6 +92,7 @@ export async function runScan(
       consumer,
       baselineForProviders(totals.guaranteed, totals.systemOverhead),
       cfg,
+      models,
     );
   });
 
@@ -111,8 +116,10 @@ export async function runScan(
       version: TOOL_VERSION,
       scannedAt: new Date().toISOString(),
       projectPath: path.resolve(projectPath),
-      pricingAsOf: PRICING_AS_OF,
-      pricingStale: isPricingStale(),
+      pricingAsOf: pricing.table.asOf,
+      pricingStale: isPricingStale(pricing.table.asOf, now),
+      pricingOrigin: pricing.origin,
+      pricingSource: pricing.source,
       systemOverheadAsOf: SYSTEM_OVERHEAD_AS_OF,
       calibration,
       cacheFormula: cacheFormulaDescription(cfg),

@@ -1,0 +1,51 @@
+{
+  "asOf": "2026-07-18",
+  "source": "https://platform.claude.com/docs/en/pricing",
+  "models": [
+    {
+      "id": "claude-fable-5",
+      "provider": "anthropic",
+      "rates": [{ "inputPerMTok": 10.0, "outputPerMTok": 50.0 }]
+    },
+    {
+      "id": "claude-opus-4-8",
+      "provider": "anthropic",
+      "rates": [{ "inputPerMTok": 5.0, "outputPerMTok": 25.0 }]
+    },
+    {
+      "id": "claude-opus-4-7",
+      "provider": "anthropic",
+      "rates": [{ "inputPerMTok": 5.0, "outputPerMTok": 25.0 }]
+    },
+    {
+      "id": "claude-opus-4-6",
+      "provider": "anthropic",
+      "rates": [{ "inputPerMTok": 5.0, "outputPerMTok": 25.0 }]
+    },
+    {
+      "id": "claude-sonnet-5",
+      "provider": "anthropic",
+      "note": "introductory pricing $2/$10 per MTok through 2026-08-31",
+      "rates": [
+        { "inputPerMTok": 2.0, "outputPerMTok": 10.0, "until": "2026-08-31" },
+        { "inputPerMTok": 3.0, "outputPerMTok": 15.0 }
+      ]
+    },
+    {
+      "id": "claude-sonnet-4-6",
+      "provider": "anthropic",
+      "rates": [{ "inputPerMTok": 3.0, "outputPerMTok": 15.0 }]
+    },
+    {
+      "id": "claude-haiku-4-5",
+      "provider": "anthropic",
+      "rates": [{ "inputPerMTok": 1.0, "outputPerMTok": 5.0 }]
+    },
+    {
+      "id": "gpt",
+      "provider": "openai",
+      "note": "placeholder — set pricing via config.pricingOverrides.gpt",
+      "rates": []
+    }
+  ]
+}

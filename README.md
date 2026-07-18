@@ -130,6 +130,7 @@ Drop an `ai-cost-audit.json` in your repo root (all fields optional — zero-con
     "my-fine-tune": { "inputPerMTok": 2.0, "provider": "anthropic" }
   },
   "systemOverheadTokens": { "claude-code": 18000, "copilot": 0 },
+  "pricing": { "sourceUrl": "https://raw.githubusercontent.com/you/your-fork/main/src/data/pricing.json" },
   "scan": { "exclude": ["**/node_modules/**", "test/fixtures/**"] }
 }
 ```
@@ -139,6 +140,8 @@ Drop an `ai-cost-audit.json` in your repo root (all fields optional — zero-con
 calibration and cache modeling (otherwise: calibration 1.0, no cache model).
 `systemOverheadTokens` replaces the shipped per-tool overhead estimates
 (set 0 to exclude a tool's overhead).
+`pricing.sourceUrl` is where `--refresh-pricing` fetches from (defaults to the
+committed data file on this repo's `main`).
 `scan.exclude` globs are honored by all adapters and by `@import`/link following.
 
 ## CLI
@@ -146,12 +149,15 @@ calibration and cache modeling (otherwise: calibration 1.0, no cache model).
 ```text
 ai-cost-audit scan [path]
   -c, --config <file>    config file (default: ./ai-cost-audit.json)
-  -f, --format <format>  md | json | html   (default: md)
+  -f, --format <format>  term | md | json | html
+                         (default: term on a terminal, md when piped or with -o)
   -o, --out <file>       write report to a file
   --ci                   run the budget gate (exit 1 on violation)
   --update-snapshot      write .ai-cost-audit/snapshot.json
   --no-global            skip user-global files (~/.claude)
   --ref-depth <n>        levels of @imports/links to follow (default: 3)
+  --refresh-pricing      fetch current prices from config.pricing.sourceUrl
+                         (default: offline; uses bundled dated prices)
 ```
 
 ## The cost model (and why caching matters)
@@ -188,8 +194,14 @@ input-side only; output tokens depend on what the model generates and are out of
   features. Overhead is never part of the CI-gated number — the gate covers only
   content your repo controls.
 - **Variable context is shown as ranges** you configure, never fake-precise numbers.
-- **Pricing is date-stamped.** If the built-in table is more than 90 days old, the
-  report warns you to verify and override via `pricingOverrides`.
+- **Pricing is dated data, not code.** Prices live in a bundled
+  `pricing.json` with an `asOf` date and per-model effective-date ranges, so a
+  known change like an introductory-pricing window resolves correctly by scan
+  date with no update. Every report discloses the date, origin (`bundled` vs
+  `remote`), and source. Runs are offline and deterministic by default; pass
+  `--refresh-pricing` to fetch the latest from `pricing.sourceUrl` (falls back
+  to bundled, loudly, on any failure). If the bundled data is more than 90 days
+  old the report warns you to refresh or override via `pricingOverrides`.
 
 ## Roadmap
 

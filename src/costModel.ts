@@ -1,5 +1,5 @@
-import type { Config, Consumer, ModelCost } from "./types.js";
-import { resolveModels, resolveProvider } from "./pricing.js";
+import type { Config, Consumer, ModelCost, ModelPricing } from "./types.js";
+import { resolveProvider } from "./pricing.js";
 
 /**
  * Steady-state effective input-price multiplier under prompt caching:
@@ -34,8 +34,9 @@ export function computeCosts(
   consumer: Consumer,
   baselineTokensByProvider: Record<string, number>,
   cfg: Config,
+  models: ModelPricing[],
 ): ModelCost[] {
-  return resolveModels(cfg).map((model) => {
+  return models.map((model) => {
     const tokens = baselineTokensByProvider[model.provider] ?? null;
     if (tokens === null || model.inputPerMTok === null) {
       return {

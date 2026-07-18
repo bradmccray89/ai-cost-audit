@@ -1,6 +1,14 @@
 import { describe, expect, it } from "vitest";
 import { cacheEffectiveMultiplier, computeCosts } from "../src/costModel.js";
+import { resolveModels } from "../src/pricing.js";
+import { bundledPricing } from "../src/pricingStore.js";
+import type { Config } from "../src/types.js";
 import { makeConfig } from "./helpers.js";
+
+/** Resolve the configured models against bundled prices at a fixed date. */
+function modelsFor(cfg: Config) {
+  return resolveModels(cfg, bundledPricing(), new Date("2026-07-18"));
+}
 
 describe("cacheEffectiveMultiplier", () => {
   it("matches the documented formula at n=10", () => {
@@ -25,7 +33,7 @@ describe("computeCosts", () => {
       requestsPerDay: [100],
       monthlyBudget: null,
     });
-    const costs = computeCosts("claude-code", { anthropic: 100_000 }, cfg);
+    const costs = computeCosts("claude-code", { anthropic: 100_000 }, cfg, modelsFor(cfg));
     expect(costs).toHaveLength(1);
     const c = costs[0]!;
     // 100k tokens at $5/MTok = $0.50 uncached.
@@ -43,7 +51,7 @@ describe("computeCosts", () => {
       requestsPerDay: [50, 200, 1000],
       monthlyBudget: 100,
     });
-    const costs = computeCosts("claude-code", { anthropic: 100_000 }, cfg);
+    const costs = computeCosts("claude-code", { anthropic: 100_000 }, cfg, modelsFor(cfg));
     const c = costs[0]!;
     // Cached per request 0.1075; mid scenario 200 req/day -> $21.50/day.
     // Runway = 100 / 21.5 ≈ 4.651 days.
@@ -55,7 +63,7 @@ describe("computeCosts", () => {
       models: ["gpt"],
       providers: ["openai"],
     });
-    const costs = computeCosts("claude-code", { openai: 100_000 }, cfg);
+    const costs = computeCosts("claude-code", { openai: 100_000 }, cfg, modelsFor(cfg));
     const c = costs[0]!;
     expect(c.perRequestUncached).toBeNull();
     expect(c.perRequestCached).toBeNull();
@@ -68,7 +76,7 @@ describe("computeCosts", () => {
       providers: ["anthropic"],
       cache: { enabled: false, requestsPerSession: 10 },
     });
-    const costs = computeCosts("claude-code", { anthropic: 100_000 }, cfg);
+    const costs = computeCosts("claude-code", { anthropic: 100_000 }, cfg, modelsFor(cfg));
     expect(costs[0]!.perRequestCached).toBeNull();
   });
 });
