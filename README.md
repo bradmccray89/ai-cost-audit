@@ -13,13 +13,18 @@ Cursor rules, Copilot instructions, referenced docs — and tells you:
 - where the **waste** is (duplicated guidance, oversized files, unbounded MCP configs),
 - and it **fails CI** when the baseline exceeds your budget or grows too fast.
 
-Everything runs **offline and deterministically** — no AI calls, no API key, no network.
+Everything runs **offline and deterministically by default** — no AI calls, no API
+key, no network. The optional `--refresh-pricing` flag is the only thing that ever
+reaches the network, and only when you pass it.
 
 ```bash
 npx ai-cost-audit scan
 ```
 
 ## Example output
+
+On a terminal you get an aligned, colorized version of this; the same data in
+plain markdown (shown here) when piped or written with `-o`:
 
 ```text
 ## Guaranteed Context (loaded on every request)
