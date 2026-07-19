@@ -2,7 +2,7 @@ import pc from "picocolors";
 import type { Config, Consumer, ModelCost, Report } from "../types.js";
 import { CONSUMER_LABELS, CONSUMER_ORDER } from "../consumers.js";
 import { projectMeasured } from "../costModel.js";
-import { formatDays, formatUSD, formatUSDRange, KIND_LABELS } from "./markdown.js";
+import { formatDays, formatUSD, formatUSDRange, KIND_LABELS, planRecommendationText } from "./markdown.js";
 
 /**
  * Terminal-native rendering: aligned columns instead of markdown pipes,
@@ -20,6 +20,10 @@ function num(n: number): string {
 function statStr(s: { min: number; median: number; max: number }): string {
   const round = (v: number) => num(Math.round(v));
   return `${round(s.median)} (${round(s.min)}–${round(s.max)})`;
+}
+
+function planRecommendation(advice: import("../types.js").PlanAdvice): string[] {
+  return [pc.green(`→ ${planRecommendationText(advice)}`)];
 }
 
 interface Column {
@@ -267,9 +271,13 @@ export function renderTerminal(report: Report, cfg: Config): string {
           ["Turns/day (active)", m.turnsPerDay.toFixed(1), `${m.activeDays} active days`],
           ["Cache read rate", pct(m.cacheReadRate), `TTL ${pct(m.ttlSplit["5m"])} 5m / ${pct(m.ttlSplit["1h"])} 1h`],
           ["Avg context/call", `${num(m.avgContextTokens)} tok`, "actual baseline + history"],
-          ["Actual cost", formatUSD(m.actualCostUSD), `${formatUSD(m.actualCostPerTurn)}/turn`],
+          ["Cost at API rates", formatUSD(m.actualCostUSD), `${formatUSD(m.actualCostPerTurn)}/turn`],
         ],
       ),
+    );
+    out.push(
+      INDENT +
+        pc.dim(`"Cost at API rates" is what this usage would cost pay-as-you-go; on a subscription you pay a flat fee (see Plan advisor).`),
     );
     // Reconciliation: estimated Claude Code total/turn vs measured actual/turn.
     const est = report.costs.find((c) => c.consumer === "claude-code" && c.totalPerTurn !== null);
@@ -316,6 +324,39 @@ export function renderTerminal(report: Report, cfg: Config): string {
           ),
       );
     }
+    blank();
+  }
+
+  // 4d. Plan advisor: subscription vs API pay-as-you-go, per developer.
+  const advice = report.planAdvice;
+  if (advice) {
+    out.push(heading("Plan advisor") + pc.dim(`  (per developer, at ${formatUSD(advice.apiEquivMonthly)}/mo API-equivalent)`));
+    out.push(
+      ...table(
+        [
+          { header: "Option", align: "left" },
+          { header: "$/month", align: "right" },
+          { header: "", align: "left" },
+        ],
+        advice.options.map((o) => [
+          o.label,
+          o.isApi ? `${formatUSD(o.monthlyUSD)}*` : formatUSD(o.monthlyUSD),
+          [o.isCurrent ? "current" : "", o.id === advice.cheapest.id ? "← cheapest" : ""]
+            .filter(Boolean)
+            .join(" "),
+        ]),
+      ),
+    );
+    for (const line of planRecommendation(advice)) {
+      out.push(INDENT + line);
+    }
+    out.push(
+      INDENT +
+        pc.dim(
+          `*API scales with usage. Plan prices are dated estimates (as of ${advice.asOf}); limits are ` +
+            `not published as token quotas, so heavy usage may throttle — verify and set config.plan.`,
+        ),
+    );
     blank();
   }
 

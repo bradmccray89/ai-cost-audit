@@ -14,6 +14,7 @@ import { deriveFindings } from "./analysis/findings.js";
 import { computeCosts, cacheFormulaDescription } from "./costModel.js";
 import { isPricingStale, relevantProviders, resolveModels, resolveProvider } from "./pricing.js";
 import { bundledPricing, type ResolvedPricing } from "./pricingStore.js";
+import { bundledPlans, computePlanAdvice } from "./plans.js";
 import { DISCLOSURE } from "./tokenizer.js";
 
 export const TOOL_NAME = "ai-cost-audit";
@@ -147,6 +148,7 @@ export async function runScan(
     requestRanges,
     findings,
     measured,
+    planAdvice: measured ? computePlanAdvice(measured, cfg, bundledPlans()) : null,
   };
 
   return { report, sources };

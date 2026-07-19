@@ -140,6 +140,7 @@ Drop an `ai-cost-audit.json` in your repo root (all fields optional — zero-con
   },
   "systemOverheadTokens": { "claude-code": 18000, "copilot": 0 },
   "pricing": { "sourceUrl": "https://raw.githubusercontent.com/you/your-fork/main/src/data/pricing.json" },
+  "plan": "claude-max-5x",
   "scan": { "exclude": ["**/node_modules/**", "test/fixtures/**"] }
 }
 ```
@@ -230,6 +231,29 @@ team-wide cost at each volume scenario, at your real measured pace, and how long
 budget lasts. This forecast is grounded in real per-turn cost, not the generic
 assumptions, so it's the setup-specific number. Real sessions routinely show far more
 calls and output per turn than the defaults assume.
+
+### Plan advisor: subscription vs API
+
+Because measured cost is priced at **API rates**, `--measure` can answer the
+question a subscription user actually has: *am I on the right plan?* It compares
+your API-equivalent monthly usage against subscription tiers (per developer) and
+recommends staying, switching to API pay-as-you-go, or changing tier:
+
+```text
+PLAN ADVISOR  (per developer, at $3,770/mo API-equivalent)
+  Claude Pro          $20    ← cheapest
+  Claude Max 5x       $100   current
+  Claude Max 20x      $200
+  API pay-as-you-go   $3,770*
+  → a subscription is far cheaper than API at your volume — verify the tier
+    sustains your usage before downgrading.
+```
+
+Set your plan with `config.plan` (a bundled id like `"claude-max-5x"`, or a custom
+`{ "label": "...", "monthlyUSD": 100 }`). Plan **prices** are dated, disclosed, and
+overridable (`src/data/plans.json`); plan **limits** are *not* published as token
+quotas, so the advisor is deliberately direction-focused (subscription vs API) and
+caveats tier selection rather than pretending to know exact throttle points.
 
 Currently Claude Code only (that's where local transcripts live); Cursor/Copilot
 have no comparable local logs.

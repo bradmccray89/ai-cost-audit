@@ -71,6 +71,22 @@ add new findings at the appropriate tier, not the bottom.
 - [ ] **Predicted-vs-actual reconciliation** against the Anthropic usage/cost API
       (org-wide, opt-in) once transcript reading exists locally.
 
+## 2b. Plan advisor — subscription vs API (spend-optimization angle)
+
+- [x] **Plan-vs-API advisor.** `scan --measure` compares measured API-equivalent
+      monthly usage against subscription tiers (bundled, dated, overridable
+      `plans.json`; `config.plan` for current), recommends stay/switch/tier with a
+      direction-focused, limit-caveated recommendation. Measured cost relabeled
+      "at API rates." Claude tiers only for now.
+- [ ] **Usage vs plan allowance** (feature #1) — needs a per-plan usage-limit model;
+      Anthropic limits are rolling-window/weekly, not published as token quotas.
+      Blocked on sourcing limit data (config-provided, empirical-from-throttling, or
+      disclosed estimates).
+- [ ] **Plan-token runway / forecast** (feature #2) — "at your trend you'll hit your
+      weekly limit by Thursday." Same limit-data dependency as above.
+- [ ] Detect throttle/limit events in transcripts to *infer* the effective ceiling
+      empirically — would unblock #1 and #2 without external limit data.
+
 ## 3. Discovery gaps — undercounting what actually loads
 
 - [ ] **Nested + parent CLAUDE.md.** Claude Code walks up from cwd and loads

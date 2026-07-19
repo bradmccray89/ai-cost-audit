@@ -175,6 +175,39 @@ export interface UsageProfile {
   unpricedCalls: number;
 }
 
+export interface Plan {
+  id: string;
+  label: string;
+  monthlyUSD: number;
+  note?: string;
+}
+
+export interface PlanOption {
+  id: string;
+  label: string;
+  monthlyUSD: number;
+  isCurrent: boolean;
+  /** True for the API pay-as-you-go option (cost varies with usage). */
+  isApi: boolean;
+}
+
+/** Plan-vs-API guidance from measured usage. */
+export interface PlanAdvice {
+  /** Measured API-equivalent monthly cost per developer (usage at API rates). */
+  apiEquivMonthly: number;
+  /** Measured turns/day per developer used for the projection. */
+  turnsPerDay: number;
+  /** All plan tiers plus API pay-as-you-go, sorted cheapest first. */
+  options: PlanOption[];
+  cheapest: PlanOption;
+  /** The configured current plan, if config.plan is set. */
+  current: PlanOption | null;
+  /** current.monthlyUSD - cheapest.monthlyUSD; positive = savings available. */
+  savingsVsCurrent: number | null;
+  /** Date stamp of the bundled plan data. */
+  asOf: string;
+}
+
 export interface Report {
   meta: {
     tool: string;
@@ -201,6 +234,8 @@ export interface Report {
   findings: Finding[];
   /** Measured usage from local transcripts, when --measure is used and found. */
   measured: UsageProfile | null;
+  /** Plan-vs-API guidance, when measured usage is available. */
+  planAdvice: PlanAdvice | null;
 }
 
 export interface SnapshotEntry {
@@ -239,6 +274,8 @@ export interface Config {
   >;
   mcp: { knownSchemaTokens: Record<string, number> };
   pricing: { sourceUrl: string };
+  /** Current subscription: a bundled plan id, a custom {label, monthlyUSD}, or null. */
+  plan: string | { label: string; monthlyUSD: number } | null;
   duplication: { minBlockTokens: number; similarityThreshold: number };
   scan: { exclude: string[] };
   refDepth: number;

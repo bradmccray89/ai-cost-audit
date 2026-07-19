@@ -52,6 +52,13 @@ const configSchema = z
         sourceUrl: z.string().url().default(DEFAULT_PRICING_URL),
       })
       .default({}),
+    plan: z
+      .union([
+        z.string(),
+        z.object({ label: z.string(), monthlyUSD: z.number().nonnegative() }),
+      ])
+      .nullable()
+      .default(null),
     duplication: z
       .object({
         minBlockTokens: z.number().positive().default(40),

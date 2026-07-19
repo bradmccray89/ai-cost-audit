@@ -1,0 +1,10 @@
+{
+  "asOf": "2026-07-19",
+  "source": "https://www.anthropic.com/pricing",
+  "disclaimer": "Best-effort estimates. Subscription prices and usage limits change and are not published as token quotas — verify against your billing and override via config.plan.",
+  "plans": [
+    { "id": "claude-pro", "label": "Claude Pro", "monthlyUSD": 20 },
+    { "id": "claude-max-5x", "label": "Claude Max 5x", "monthlyUSD": 100 },
+    { "id": "claude-max-20x", "label": "Claude Max 20x", "monthlyUSD": 200 }
+  ]
+}

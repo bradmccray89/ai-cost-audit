@@ -90,7 +90,7 @@ describe("renderTerminal", () => {
     const { report } = await runScan(SAMPLE_REPO, cfg, null, undefined, SAMPLE_PROFILE);
     const text = plainLines(renderTerminal(report, cfg)).join("\n");
     expect(text).toContain("MEASURED FROM YOUR USAGE");
-    expect(text).toContain("Actual cost");
+    expect(text).toContain("Cost at API rates");
     expect(text).toContain("$0.40/turn");
     // Reconciliation shows because the sample repo has a Claude Code estimate.
     expect(text).toMatch(/Reconciliation: estimated .* vs measured \$0\.40\/turn/);
@@ -98,6 +98,10 @@ describe("renderTerminal", () => {
     expect(text).toContain("PROJECTED FROM YOUR MEASURED USAGE");
     expect(text).toContain("(measured)");
     expect(text).toContain("budget lasts");
+    // Plan advisor.
+    expect(text).toContain("PLAN ADVISOR");
+    expect(text).toContain("API pay-as-you-go");
+    expect(text).toContain("Claude Max 5x");
   });
 
   it("omits the measured section when no profile is present", async () => {

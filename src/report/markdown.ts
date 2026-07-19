@@ -17,6 +17,36 @@ export const KIND_LABELS: Record<string, string> = {
   "referenced-doc": "Referenced documentation",
 };
 
+/**
+ * Direction-aware plan recommendation (plain text, shared by all renderers).
+ * Focuses on the robust signal — subscription vs API — and caveats tier choice,
+ * since plan limits are not reliable data.
+ */
+export function planRecommendationText(advice: import("../types.js").PlanAdvice): string {
+  const { current, cheapest, savingsVsCurrent } = advice;
+  const cheapestPlan = advice.options.find((o) => !o.isApi);
+  const apiIsCheapest = cheapest.isApi;
+  const save = savingsVsCurrent !== null ? formatUSD(Math.abs(savingsVsCurrent)) : "";
+
+  if (current) {
+    if (current.id === cheapest.id) {
+      return `you're on the most cost-effective option (${current.label}) for your usage.`;
+    }
+    if (apiIsCheapest) {
+      return `your usage is light — switch to API pay-as-you-go (~${formatUSD(cheapest.monthlyUSD)}/mo) and save ~${save}/mo per developer.`;
+    }
+    if (current.isApi && cheapestPlan) {
+      return `a subscription is far cheaper than API at your volume — ${cheapestPlan.label} ($${cheapestPlan.monthlyUSD}/mo) would save ~${save}/mo per developer, if it sustains your usage.`;
+    }
+    return `a lower tier (${cheapest.label}, $${cheapest.monthlyUSD}/mo) may suffice and save ~${save}/mo per developer — verify it sustains your volume before downgrading.`;
+  }
+
+  if (apiIsCheapest) {
+    return `your usage is light — API pay-as-you-go (~${formatUSD(cheapest.monthlyUSD)}/mo per developer) is cheaper than any subscription.`;
+  }
+  return `your usage is worth ${formatUSD(advice.apiEquivMonthly)}/mo at API rates — a subscription is far cheaper. Pick the lowest tier that sustains your volume (from ${cheapestPlan?.label ?? "a plan"} at $${cheapestPlan?.monthlyUSD ?? "?"}/mo).`;
+}
+
 export function formatUSD(value: number | null): string {
   if (value === null) return "—";
   if (value === 0) return "$0.00";
@@ -198,7 +228,11 @@ export function renderMarkdown(report: Report, cfg: Config): string {
     lines.push(`| Turns/day (active) | ${m.turnsPerDay.toFixed(1)} | ${m.activeDays} active days |`);
     lines.push(`| Cache read rate | ${pct(m.cacheReadRate)} | TTL ${pct(m.ttlSplit["5m"])} 5m / ${pct(m.ttlSplit["1h"])} 1h |`);
     lines.push(`| Avg context/call | ${num(m.avgContextTokens)} tok | actual baseline + history |`);
-    lines.push(`| **Actual cost** | **${formatUSD(m.actualCostUSD)}** | **${formatUSD(m.actualCostPerTurn)}/turn** |`);
+    lines.push(`| **Cost at API rates** | **${formatUSD(m.actualCostUSD)}** | **${formatUSD(m.actualCostPerTurn)}/turn** |`);
+    lines.push("");
+    lines.push(
+      `"Cost at API rates" is what this usage would cost pay-as-you-go; on a subscription you pay a flat fee (see Plan advisor).`,
+    );
     lines.push("");
     const est = report.costs.find((c) => c.consumer === "claude-code" && c.totalPerTurn !== null);
     if (est) {
@@ -230,6 +264,29 @@ export function renderMarkdown(report: Report, cfg: Config): string {
       lines.push(
         `At your measured pace (~${num(proj.measuredPace.turnsPerDay)} turns/day/dev × ${cfg.developers} dev(s)), ` +
           `your $${cfg.monthlyBudget}/month budget lasts ~${proj.runwayDays.toFixed(1)} days.`,
+      );
+      lines.push("");
+    }
+
+    // Plan advisor: subscription vs API pay-as-you-go.
+    const advice = report.planAdvice;
+    if (advice) {
+      lines.push(`### Plan advisor`);
+      lines.push("");
+      lines.push(`Per developer, at your measured **${formatUSD(advice.apiEquivMonthly)}/mo** API-equivalent usage:`);
+      lines.push("");
+      lines.push(`| Option | $/month | |`);
+      lines.push(`|---|---:|---|`);
+      for (const o of advice.options) {
+        const tags = [o.isCurrent ? "current" : "", o.id === advice.cheapest.id ? "**cheapest**" : ""].filter(Boolean).join(" ");
+        lines.push(`| ${o.label} | ${formatUSD(o.monthlyUSD)}${o.isApi ? "*" : ""} | ${tags} |`);
+      }
+      lines.push("");
+      lines.push(`**Recommendation:** ${planRecommendationText(advice)}`);
+      lines.push("");
+      lines.push(
+        `*API scales with usage. Plan prices are dated estimates (as of ${advice.asOf}); limits are not ` +
+          `published as token quotas, so heavy usage may throttle — verify and set \`config.plan\`.`,
       );
       lines.push("");
     }

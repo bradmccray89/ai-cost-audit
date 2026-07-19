@@ -1,7 +1,29 @@
-import type { Config, Consumer, Report } from "../types.js";
+import type { Config, Consumer, PlanAdvice, Report } from "../types.js";
 import { CONSUMER_LABELS, CONSUMER_ORDER } from "../consumers.js";
 import { projectMeasured } from "../costModel.js";
-import { formatUSD, formatUSDRange } from "./markdown.js";
+import { formatUSD, formatUSDRange, planRecommendationText } from "./markdown.js";
+
+function planAdviceHtml(advice: PlanAdvice | null): string {
+  if (!advice) return "";
+  const rows = advice.options
+    .map((o) => {
+      const tags = [o.isCurrent ? "current" : "", o.id === advice.cheapest.id ? "<strong>cheapest</strong>" : ""]
+        .filter(Boolean)
+        .join(" ");
+      return `<tr><td>${esc(o.label)}</td><td class="r">${formatUSD(o.monthlyUSD)}${o.isApi ? "*" : ""}</td><td>${tags}</td></tr>`;
+    })
+    .join("\n");
+  const rec = `Recommendation: ${planRecommendationText(advice)}`;
+  return `
+<h3>Plan advisor</h3>
+<p class="muted">Per developer, at your measured ${formatUSD(advice.apiEquivMonthly)}/mo API-equivalent usage:</p>
+<table>
+<tr><th>Option</th><th class="r">$/month</th><th></th></tr>
+${rows}
+</table>
+<p><strong>${esc(rec)}</strong></p>
+<p class="muted">*API scales with usage. Plan prices are dated estimates (as of ${esc(advice.asOf)}); limits are not published as token quotas, so heavy usage may throttle &mdash; verify and set config.plan.</p>`;
+}
 
 function esc(text: string): string {
   return text
@@ -88,8 +110,9 @@ export function renderHtml(report: Report, cfg: Config): string {
 <tr><td>Turns/day (active)</td><td class="r">${m.turnsPerDay.toFixed(1)}</td><td>${m.activeDays} active days</td></tr>
 <tr><td>Cache read rate</td><td class="r">${pct(m.cacheReadRate)}</td><td>TTL ${pct(m.ttlSplit["5m"])} 5m / ${pct(m.ttlSplit["1h"])} 1h</td></tr>
 <tr><td>Avg context/call</td><td class="r">${num(m.avgContextTokens)} tok</td><td>actual baseline + history</td></tr>
-<tr class="total"><td>Actual cost</td><td class="r">${formatUSD(m.actualCostUSD)}</td><td>${formatUSD(m.actualCostPerTurn)}/turn</td></tr>
+<tr class="total"><td>Cost at API rates</td><td class="r">${formatUSD(m.actualCostUSD)}</td><td>${formatUSD(m.actualCostPerTurn)}/turn</td></tr>
 </table>
+<p class="muted">"Cost at API rates" is what this usage would cost pay-as-you-go; on a subscription you pay a flat fee (see Plan advisor).</p>
 ${recon}
 <h3>Projected from your measured usage</h3>
 <p class="muted">At your measured <strong>${formatUSD(proj.perTurn)}</strong>/turn actual, team-wide (${cfg.developers} dev(s)):</p>
@@ -98,7 +121,8 @@ ${recon}
 ${projRows}
 <tr class="total"><td class="r">${num(proj.measuredPace.turnsPerDay)} (measured)</td><td class="r">${formatUSD(proj.measuredPace.teamPerDay)}/day</td><td class="r">${formatUSD(proj.measuredPace.teamPerDay * 30)}</td></tr>
 </table>
-${runwayLine}`;
+${runwayLine}
+${planAdviceHtml(report.planAdvice)}`;
   })();
 
   const findingItems =
