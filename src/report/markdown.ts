@@ -1,5 +1,6 @@
 import type { Config, Consumer, ModelCost, MoneyRange, Report } from "../types.js";
 import { CONSUMER_LABELS, CONSUMER_ORDER } from "../consumers.js";
+import { projectMeasured } from "../costModel.js";
 
 export const KIND_LABELS: Record<string, string> = {
   "repo-instructions": "Repository instructions",
@@ -209,6 +210,27 @@ export function renderMarkdown(report: Report, cfg: Config): string {
     }
     if (m.unpricedCalls > 0) {
       lines.push(`${num(m.unpricedCalls)} call(s) used a model not in the pricing table (excluded from cost).`);
+      lines.push("");
+    }
+
+    // Forward projection from measured actual $/turn — the tailored forecast.
+    const proj = projectMeasured(m, cfg);
+    lines.push(`### Projected from your measured usage`);
+    lines.push("");
+    lines.push(`At your measured **${formatUSD(proj.perTurn)}/turn** actual, team-wide (${cfg.developers} dev(s)):`);
+    lines.push("");
+    lines.push(`| Turns/day/dev | Team $/day | ≈ $/month |`);
+    lines.push(`|---:|---:|---:|`);
+    for (const d of proj.daily) {
+      lines.push(`| ${num(d.turnsPerDay)} | ${formatUSD(d.teamPerDay)}/day | ${formatUSD(d.teamPerDay * 30)} |`);
+    }
+    lines.push(`| **${num(proj.measuredPace.turnsPerDay)} (measured)** | **${formatUSD(proj.measuredPace.teamPerDay)}/day** | **${formatUSD(proj.measuredPace.teamPerDay * 30)}** |`);
+    lines.push("");
+    if (proj.runwayDays !== null && cfg.monthlyBudget !== null) {
+      lines.push(
+        `At your measured pace (~${num(proj.measuredPace.turnsPerDay)} turns/day/dev × ${cfg.developers} dev(s)), ` +
+          `your $${cfg.monthlyBudget}/month budget lasts ~${proj.runwayDays.toFixed(1)} days.`,
+      );
       lines.push("");
     }
   }

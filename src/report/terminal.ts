@@ -1,6 +1,7 @@
 import pc from "picocolors";
 import type { Config, Consumer, ModelCost, Report } from "../types.js";
 import { CONSUMER_LABELS, CONSUMER_ORDER } from "../consumers.js";
+import { projectMeasured } from "../costModel.js";
 import { formatDays, formatUSD, formatUSDRange, KIND_LABELS } from "./markdown.js";
 
 /**
@@ -283,6 +284,37 @@ export function renderTerminal(report: Report, cfg: Config): string {
     }
     if (m.unpricedCalls > 0) {
       out.push(INDENT + pc.dim(`${num(m.unpricedCalls)} call(s) used a model not in the pricing table (excluded from cost).`));
+    }
+    blank();
+
+    // Forward projection from measured actual $/turn — the tailored forecast.
+    const proj = projectMeasured(m, cfg);
+    out.push(heading("Projected from your measured usage") + pc.dim(`  (at ${formatUSD(proj.perTurn)}/turn actual)`));
+    out.push(
+      ...table(
+        [
+          { header: "Turns/day/dev", align: "right" },
+          { header: `Team $/day (${cfg.developers} dev${cfg.developers === 1 ? "" : "s"})`, align: "right" },
+          { header: "≈ $/month", align: "right" },
+        ],
+        [
+          ...proj.daily.map((d) => [num(d.turnsPerDay), `${formatUSD(d.teamPerDay)}/day`, formatUSD(d.teamPerDay * 30)]),
+          [
+            pc.bold(`${num(proj.measuredPace.turnsPerDay)} (measured)`),
+            pc.bold(`${formatUSD(proj.measuredPace.teamPerDay)}/day`),
+            pc.bold(formatUSD(proj.measuredPace.teamPerDay * 30)),
+          ],
+        ],
+      ),
+    );
+    if (proj.runwayDays !== null && cfg.monthlyBudget !== null) {
+      out.push(
+        INDENT +
+          pc.dim(
+            `At your measured pace (~${num(proj.measuredPace.turnsPerDay)} turns/day/dev × ${cfg.developers} dev${cfg.developers === 1 ? "" : "s"}), ` +
+              `$${cfg.monthlyBudget}/mo budget lasts ~${proj.runwayDays.toFixed(1)} days.`,
+          ),
+      );
     }
     blank();
   }

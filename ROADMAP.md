@@ -54,8 +54,11 @@ add new findings at the appropriate tier, not the bottom.
       turns/day, avg context/call, and **actual $ spent** (priced from recorded token
       usage); reconciles estimate vs actual; shows measured next to configured.
       Offline, no key. First slice done — follow-ups below:
-  - [ ] Feed measured calls/turn + output/turn back into the projection when
-        `--measure` is on (auto-tailor, not just display alongside).
+  - [x] Auto-tailor the projection from measured usage. `projectMeasured()` scales
+        the measured actual $/turn across the configured volume scenarios, the
+        developer's real measured pace, and the team, with runway — a setup-specific
+        forward forecast grounded in real cost (not the generic formula). Rendered
+        in the measured section across all formats.
   - [ ] Attribute cost to specific context (per-file / per-CLAUDE.md dollar impact)
         — "your CLAUDE.md cost you $X"; needs mapping cached prefix to sources.
   - [ ] Use measured cached-prefix size to validate the ×1.2 calibration and the

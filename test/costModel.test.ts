@@ -1,8 +1,8 @@
 import { describe, expect, it } from "vitest";
-import { cacheEffectiveMultiplier, computeCosts } from "../src/costModel.js";
+import { cacheEffectiveMultiplier, computeCosts, projectMeasured } from "../src/costModel.js";
 import { resolveModels } from "../src/pricing.js";
 import { bundledPricing } from "../src/pricingStore.js";
-import type { Config } from "../src/types.js";
+import type { Config, UsageProfile } from "../src/types.js";
 import { makeConfig } from "./helpers.js";
 
 /** Resolve the configured models against bundled prices at a fixed date. */
@@ -162,5 +162,48 @@ describe("computeCosts", () => {
     });
     const costs = computeCosts("claude-code", { anthropic: 100_000 }, cfg, modelsFor(cfg));
     expect(costs[0]!.perTurnCached).toBeNull();
+  });
+});
+
+describe("projectMeasured", () => {
+  const profile: UsageProfile = {
+    sessions: 1,
+    apiCalls: 40,
+    turns: 10,
+    firstAt: "2026-07-10T00:00:00Z",
+    lastAt: "2026-07-14T00:00:00Z",
+    activeDays: 5,
+    models: ["claude-opus-4-8"],
+    apiCallsPerTurn: { min: 1, median: 4, max: 12 },
+    outputTokensPerTurn: { min: 100, median: 1500, max: 5000 },
+    turnsPerDay: 8, // measured pace
+    cacheReadRate: 0.9,
+    ttlSplit: { "5m": 0, "1h": 1 },
+    avgContextTokens: 50000,
+    actualCostUSD: 5,
+    actualCostPerTurn: 0.5,
+    unpricedCalls: 0,
+  };
+
+  it("scales measured $/turn across scenarios, team, and pace", async () => {
+    const cfg = await makeConfig({
+      turnsPerDay: [50, 200],
+      developers: 3,
+      monthlyBudget: 100,
+    });
+    const p = projectMeasured(profile, cfg);
+    expect(p.perTurn).toBe(0.5);
+    // 50 turns/day * $0.5 * 3 devs = $75/day.
+    expect(p.daily[0]).toEqual({ turnsPerDay: 50, teamPerDay: 75 });
+    expect(p.daily[1]!.teamPerDay).toBe(300);
+    // Measured pace 8 turns/day * 0.5 * 3 = $12/day team.
+    expect(p.measuredPace).toEqual({ turnsPerDay: 8, teamPerDay: 12 });
+    // Runway at measured pace: 100 / 12 ≈ 8.33 days.
+    expect(p.runwayDays).toBeCloseTo(100 / 12, 6);
+  });
+
+  it("has null runway when no budget is set", async () => {
+    const cfg = await makeConfig({ monthlyBudget: null });
+    expect(projectMeasured(profile, cfg).runwayDays).toBeNull();
   });
 });

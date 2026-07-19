@@ -86,7 +86,7 @@ describe("renderTerminal", () => {
   });
 
   it("renders the measured section and reconciliation when a profile is present", async () => {
-    const cfg = await makeConfig();
+    const cfg = await makeConfig({ monthlyBudget: 100 });
     const { report } = await runScan(SAMPLE_REPO, cfg, null, undefined, SAMPLE_PROFILE);
     const text = plainLines(renderTerminal(report, cfg)).join("\n");
     expect(text).toContain("MEASURED FROM YOUR USAGE");
@@ -94,6 +94,10 @@ describe("renderTerminal", () => {
     expect(text).toContain("$0.40/turn");
     // Reconciliation shows because the sample repo has a Claude Code estimate.
     expect(text).toMatch(/Reconciliation: estimated .* vs measured \$0\.40\/turn/);
+    // Tailored forward projection from measured $/turn.
+    expect(text).toContain("PROJECTED FROM YOUR MEASURED USAGE");
+    expect(text).toContain("(measured)");
+    expect(text).toContain("budget lasts");
   });
 
   it("omits the measured section when no profile is present", async () => {

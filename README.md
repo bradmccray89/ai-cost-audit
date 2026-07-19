@@ -224,10 +224,12 @@ It reports, for this exact repo, what actually happened — measured API calls/t
 output tokens/turn, cache read rate and TTL split, average context per call, and the
 **actual dollars spent** (priced from the recorded per-call token usage, including
 the 5m/1h cache-write split) — each shown next to the configured assumption so the
-gap is visible. It then **reconciles** the estimate against reality: "estimated
-$X/turn vs measured $Y/turn." Real sessions routinely show far more calls and output
-per turn than the defaults assume, so this is the honest number. Copy the measured
-values into your config to make every projection setup-specific.
+gap is visible. It then **reconciles** the estimate against reality ("estimated
+$X/turn vs measured $Y/turn"), and **projects forward from your measured $/turn** —
+team-wide cost at each volume scenario, at your real measured pace, and how long your
+budget lasts. This forecast is grounded in real per-turn cost, not the generic
+assumptions, so it's the setup-specific number. Real sessions routinely show far more
+calls and output per turn than the defaults assume.
 
 Currently Claude Code only (that's where local transcripts live); Cursor/Copilot
 have no comparable local logs.

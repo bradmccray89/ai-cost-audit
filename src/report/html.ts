@@ -1,5 +1,6 @@
 import type { Config, Consumer, Report } from "../types.js";
 import { CONSUMER_LABELS, CONSUMER_ORDER } from "../consumers.js";
+import { projectMeasured } from "../costModel.js";
 import { formatUSD, formatUSDRange } from "./markdown.js";
 
 function esc(text: string): string {
@@ -69,6 +70,14 @@ export function renderHtml(report: Report, cfg: Config): string {
     const recon = est
       ? `<p class="muted">Reconciliation: estimated <strong>${formatUSDRange(est.totalPerTurn)}</strong>/turn (${esc(est.model)}) vs measured <strong>${formatUSD(m.actualCostPerTurn)}</strong>/turn actual.</p>`
       : "";
+    const proj = projectMeasured(m, cfg);
+    const projRows = proj.daily
+      .map((d) => `<tr><td class="r">${num(d.turnsPerDay)}</td><td class="r">${formatUSD(d.teamPerDay)}/day</td><td class="r">${formatUSD(d.teamPerDay * 30)}</td></tr>`)
+      .join("\n");
+    const runwayLine =
+      proj.runwayDays !== null && cfg.monthlyBudget !== null
+        ? `<p class="muted">At your measured pace (~${num(proj.measuredPace.turnsPerDay)} turns/day/dev &times; ${cfg.developers} dev(s)), your $${cfg.monthlyBudget}/month budget lasts ~${proj.runwayDays.toFixed(1)} days.</p>`
+        : "";
     return `
 <h2>Measured from your usage</h2>
 <p class="muted">From ${m.sessions} local Claude Code session(s), ${esc(m.firstAt.slice(0, 10))} &rarr; ${esc(m.lastAt.slice(0, 10))} (${num(m.turns)} turns, ${num(m.apiCalls)} API calls).</p>
@@ -81,7 +90,15 @@ export function renderHtml(report: Report, cfg: Config): string {
 <tr><td>Avg context/call</td><td class="r">${num(m.avgContextTokens)} tok</td><td>actual baseline + history</td></tr>
 <tr class="total"><td>Actual cost</td><td class="r">${formatUSD(m.actualCostUSD)}</td><td>${formatUSD(m.actualCostPerTurn)}/turn</td></tr>
 </table>
-${recon}`;
+${recon}
+<h3>Projected from your measured usage</h3>
+<p class="muted">At your measured <strong>${formatUSD(proj.perTurn)}</strong>/turn actual, team-wide (${cfg.developers} dev(s)):</p>
+<table>
+<tr><th class="r">Turns/day/dev</th><th class="r">Team $/day</th><th class="r">&asymp; $/month</th></tr>
+${projRows}
+<tr class="total"><td class="r">${num(proj.measuredPace.turnsPerDay)} (measured)</td><td class="r">${formatUSD(proj.measuredPace.teamPerDay)}/day</td><td class="r">${formatUSD(proj.measuredPace.teamPerDay * 30)}</td></tr>
+</table>
+${runwayLine}`;
   })();
 
   const findingItems =

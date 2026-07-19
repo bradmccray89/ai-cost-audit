@@ -1,5 +1,47 @@
-import type { Config, Consumer, DailyProjection, ModelCost, ModelPricing, MoneyRange } from "./types.js";
+import type {
+  Config,
+  Consumer,
+  DailyProjection,
+  ModelCost,
+  ModelPricing,
+  MoneyRange,
+  UsageProfile,
+} from "./types.js";
 import { resolveProvider } from "./pricing.js";
+
+/** A forward cost forecast built from measured actual $/turn (per developer). */
+export interface MeasuredProjection {
+  /** Measured actual cost per turn, per developer. */
+  perTurn: number;
+  /** Team-wide $/day at each configured turns/day scenario. */
+  daily: { turnsPerDay: number; teamPerDay: number }[];
+  /** The developer's actual measured pace and its team-wide $/day. */
+  measuredPace: { turnsPerDay: number; teamPerDay: number };
+  /** Days the monthly budget lasts at the measured pace, team-wide. */
+  runwayDays: number | null;
+}
+
+/**
+ * Project cost forward from measured usage: the actual measured $/turn scaled to
+ * the configured volume scenarios, the developer's real measured pace, and the
+ * team. Grounded in real per-turn cost rather than the generic estimate's
+ * assumptions — this is the setup-specific forecast.
+ */
+export function projectMeasured(measured: UsageProfile, cfg: Config): MeasuredProjection {
+  const perTurn = measured.actualCostPerTurn;
+  const devs = cfg.developers;
+  const daily = cfg.turnsPerDay.map((turnsPerDay) => ({
+    turnsPerDay,
+    teamPerDay: perTurn * turnsPerDay * devs,
+  }));
+  const paceRate = Math.max(1, Math.round(measured.turnsPerDay));
+  const measuredPace = { turnsPerDay: paceRate, teamPerDay: perTurn * paceRate * devs };
+  let runwayDays: number | null = null;
+  if (cfg.monthlyBudget !== null && measuredPace.teamPerDay > 0) {
+    runwayDays = cfg.monthlyBudget / measuredPace.teamPerDay;
+  }
+  return { perTurn, daily, measuredPace, runwayDays };
+}
 
 /**
  * Steady-state effective input-price multiplier under prompt caching over a
