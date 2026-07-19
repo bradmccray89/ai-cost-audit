@@ -59,8 +59,15 @@ add new findings at the appropriate tier, not the bottom.
         developer's real measured pace, and the team, with runway — a setup-specific
         forward forecast grounded in real cost (not the generic formula). Rendered
         in the measured section across all formats.
+  - [x] Per-model cost breakdown + session duration + cost composition (cache
+        reads/writes/output/fresh input) in the measured section. Answers "which
+        model, how long, where did the money go." Profile now carries `tool`,
+        `byModel`, `durationHours`, `composition`.
   - [ ] Attribute cost to specific context (per-file / per-CLAUDE.md dollar impact)
         — "your CLAUDE.md cost you $X"; needs mapping cached prefix to sources.
+  - [ ] Multi-tool spend rollup (personal): flat-subscription tools (Copilot,
+        ChatGPT, Claude plan) from config + measured Claude Code = total AI spend.
+        Per-model only where per-token data exists; flat tools have no per-model cost.
   - [ ] Use measured cached-prefix size to validate the ×1.2 calibration and the
         system-overhead constants empirically (closes two tier-1 items with real data).
 - [ ] **Measure MCP schemas** with opt-in `--measure-mcp`: spawn stdio servers

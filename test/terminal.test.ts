@@ -5,13 +5,19 @@ import type { UsageProfile } from "../src/types.js";
 import { makeConfig, SAMPLE_REPO } from "./helpers.js";
 
 const SAMPLE_PROFILE: UsageProfile = {
+  tool: "Claude Code",
   sessions: 2,
   apiCalls: 40,
   turns: 8,
   firstAt: "2026-07-10T10:00:00.000Z",
   lastAt: "2026-07-12T18:00:00.000Z",
+  durationHours: 56,
   activeDays: 3,
   models: ["claude-opus-4-8"],
+  byModel: [
+    { model: "claude-opus-4-8", calls: 40, outputTokens: 12000, contextTokens: 1_800_000, costUSD: 3.2, share: 1 },
+  ],
+  composition: { cacheRead: 1.5, cacheWrite: 0.8, freshInput: 0.2, output: 0.7 },
   apiCallsPerTurn: { min: 2, median: 5, max: 12 },
   outputTokensPerTurn: { min: 300, median: 1800, max: 6000 },
   turnsPerDay: 2.67,

@@ -43,6 +43,26 @@ describe("measureUsage", () => {
     expect(p.ttlSplit["5m"]).toBeCloseTo(1, 10);
     expect(p.avgContextTokens).toBe(1000);
     expect(p.unpricedCalls).toBe(0);
+    expect(p.tool).toBe("Claude Code");
+    // firstAt 07-10T10:00:00 → lastAt 07-11T10:00:01 ≈ 24h.
+    expect(p.durationHours).toBeCloseTo(24, 2);
+  });
+
+  it("breaks cost down by model and by token type", () => {
+    const p = measureUsage("/test/repo-a", table, { projectsRoot: PROJECTS_ROOT })!;
+    // One model in the fixture, so it owns 100% of cost.
+    expect(p.byModel).toHaveLength(1);
+    const opus = p.byModel[0]!;
+    expect(opus.model).toBe("claude-opus-4-8");
+    expect(opus.calls).toBe(4);
+    expect(opus.outputTokens).toBe(600); // 200+100+100+200
+    expect(opus.share).toBeCloseTo(1, 10);
+    expect(opus.costUSD).toBeCloseTo(0.02325, 10);
+    // Composition sums to the total cost.
+    const c = p.composition;
+    expect(c.cacheRead + c.cacheWrite + c.freshInput + c.output).toBeCloseTo(0.02325, 10);
+    // Output dominates here: 600 tok × $25/M = $0.015.
+    expect(c.output).toBeCloseTo(0.015, 10);
   });
 
   it("prices actual cost from recorded token usage", () => {

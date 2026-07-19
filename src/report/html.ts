@@ -100,9 +100,22 @@ export function renderHtml(report: Report, cfg: Config): string {
       proj.runwayDays !== null && cfg.monthlyBudget !== null
         ? `<p class="muted">At your measured pace (~${num(proj.measuredPace.turnsPerDay)} turns/day/dev &times; ${cfg.developers} dev(s)), your $${cfg.monthlyBudget}/month budget lasts ~${proj.runwayDays.toFixed(1)} days.</p>`
         : "";
+    const dur = m.durationHours >= 1 ? `${m.durationHours.toFixed(1)}h` : `${Math.round(m.durationHours * 60)}m`;
+    const byModelRows = m.byModel
+      .map((mm) => `<tr><td>${esc(mm.model)}</td><td class="r">${num(mm.calls)}</td><td class="r">${num(mm.outputTokens)}</td><td class="r">${formatUSD(mm.costUSD)}</td><td class="r">${Math.round(mm.share * 100)}%</td></tr>`)
+      .join("\n");
+    const byModelTable = m.byModel.length
+      ? `<h3>By model</h3>
+<table>
+<tr><th>Model</th><th class="r">Calls</th><th class="r">Output tok</th><th class="r">Cost</th><th class="r">Share</th></tr>
+${byModelRows}
+</table>`
+      : "";
+    const comp = m.composition;
+    const compLine = `<p class="muted">Cost went to: cache reads ${formatUSD(comp.cacheRead)}, cache writes ${formatUSD(comp.cacheWrite)}, output ${formatUSD(comp.output)}, fresh input ${formatUSD(comp.freshInput)}.</p>`;
     return `
-<h2>Measured from your usage</h2>
-<p class="muted">From ${m.sessions} local Claude Code session(s), ${esc(m.firstAt.slice(0, 10))} &rarr; ${esc(m.lastAt.slice(0, 10))} (${num(m.turns)} turns, ${num(m.apiCalls)} API calls).</p>
+<h2>Measured from your usage &mdash; ${esc(m.tool)}</h2>
+<p class="muted">From ${m.sessions} local ${esc(m.tool)} session(s), ${esc(m.firstAt.slice(0, 10))} &rarr; ${esc(m.lastAt.slice(0, 10))} (${num(m.turns)} turns, ${num(m.apiCalls)} API calls, ~${dur}).</p>
 <table>
 <tr><th>Metric</th><th class="r">Measured</th><th>vs configured</th></tr>
 <tr><td>API calls/turn</td><td class="r">${stat(m.apiCallsPerTurn)}</td><td>configured ${num(cfg.apiCallsPerTurn[0])}&ndash;${num(cfg.apiCallsPerTurn[1])}</td></tr>
@@ -113,6 +126,8 @@ export function renderHtml(report: Report, cfg: Config): string {
 <tr class="total"><td>Cost at API rates</td><td class="r">${formatUSD(m.actualCostUSD)}</td><td>${formatUSD(m.actualCostPerTurn)}/turn</td></tr>
 </table>
 <p class="muted">"Cost at API rates" is what this usage would cost pay-as-you-go; on a subscription you pay a flat fee (see Plan advisor).</p>
+${byModelTable}
+${compLine}
 ${recon}
 <h3>Projected from your measured usage</h3>
 <p class="muted">At your measured <strong>${formatUSD(proj.perTurn)}</strong>/turn actual, team-wide (${cfg.developers} dev(s)):</p>

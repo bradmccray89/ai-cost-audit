@@ -214,11 +214,12 @@ export function renderMarkdown(report: Report, cfg: Config): string {
     const pct = (v: number) => `${Math.round(v * 100)}%`;
     const stat = (s: { min: number; median: number; max: number }) =>
       `${Math.round(s.median).toLocaleString()} (${Math.round(s.min).toLocaleString()}–${Math.round(s.max).toLocaleString()})`;
-    lines.push(`## Measured from your usage`);
+    const dur = m.durationHours >= 1 ? `${m.durationHours.toFixed(1)}h` : `${Math.round(m.durationHours * 60)}m`;
+    lines.push(`## Measured from your usage — ${m.tool}`);
     lines.push("");
     lines.push(
-      `From ${m.sessions} local Claude Code session(s), ${m.firstAt.slice(0, 10)} → ${m.lastAt.slice(0, 10)} ` +
-        `(${num(m.turns)} turns, ${num(m.apiCalls)} API calls):`,
+      `From ${m.sessions} local ${m.tool} session(s), ${m.firstAt.slice(0, 10)} → ${m.lastAt.slice(0, 10)} ` +
+        `(${num(m.turns)} turns, ${num(m.apiCalls)} API calls, ~${dur}):`,
     );
     lines.push("");
     lines.push(`| Metric | Measured | vs configured |`);
@@ -232,6 +233,22 @@ export function renderMarkdown(report: Report, cfg: Config): string {
     lines.push("");
     lines.push(
       `"Cost at API rates" is what this usage would cost pay-as-you-go; on a subscription you pay a flat fee (see Plan advisor).`,
+    );
+    lines.push("");
+    if (m.byModel.length > 0) {
+      lines.push(`**By model**`);
+      lines.push("");
+      lines.push(`| Model | Calls | Output tok | Cost | Share |`);
+      lines.push(`|---|---:|---:|---:|---:|`);
+      for (const mm of m.byModel) {
+        lines.push(`| ${mm.model} | ${num(mm.calls)} | ${num(mm.outputTokens)} | ${formatUSD(mm.costUSD)} | ${Math.round(mm.share * 100)}% |`);
+      }
+      lines.push("");
+    }
+    const comp = m.composition;
+    lines.push(
+      `Cost went to: cache reads ${formatUSD(comp.cacheRead)}, cache writes ${formatUSD(comp.cacheWrite)}, ` +
+        `output ${formatUSD(comp.output)}, fresh input ${formatUSD(comp.freshInput)}.`,
     );
     lines.push("");
     const est = report.costs.find((c) => c.consumer === "claude-code" && c.totalPerTurn !== null);

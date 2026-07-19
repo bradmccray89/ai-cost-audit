@@ -222,10 +222,12 @@ npx ai-cost-audit scan --measure
 ```
 
 It reports, for this exact repo, what actually happened — measured API calls/turn,
-output tokens/turn, cache read rate and TTL split, average context per call, and the
-**actual dollars spent** (priced from the recorded per-call token usage, including
-the 5m/1h cache-write split) — each shown next to the configured assumption so the
-gap is visible. It then **reconciles** the estimate against reality ("estimated
+output tokens/turn, cache read rate and TTL split, average context per call, session
+duration, a **per-model cost breakdown** (which models drove the spend), a
+**cost composition** (cache reads vs writes vs output), and the **actual dollars
+spent** (priced from the recorded per-call token usage, including the 5m/1h
+cache-write split) — each shown next to the configured assumption so the gap is
+visible. It then **reconciles** the estimate against reality ("estimated
 $X/turn vs measured $Y/turn"), and **projects forward from your measured $/turn** —
 team-wide cost at each volume scenario, at your real measured pace, and how long your
 budget lasts. This forecast is grounded in real per-turn cost, not the generic

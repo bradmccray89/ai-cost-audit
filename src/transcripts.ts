@@ -1,8 +1,18 @@
 import { readFileSync, existsSync, readdirSync, statSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import type { Stats, UsageProfile } from "./types.js";
+import type { CostComposition, ModelUsage, Stats, UsageProfile } from "./types.js";
 import { PROVIDERS, resolveRate, type PricingTable } from "./pricing.js";
+
+/** The tool whose local transcripts this module reads. */
+const TOOL_LABEL = "Claude Code";
+
+interface CostParts {
+  cacheRead: number;
+  cacheWrite: number;
+  freshInput: number;
+  output: number;
+}
 
 /**
  * Measured usage read from local Claude Code transcripts
@@ -136,20 +146,23 @@ function stats(values: number[]): Stats {
 
 const CACHE = PROVIDERS.anthropic!.cache!;
 
-/** Actual USD for one call, priced from recorded tokens (Anthropic cache economics). */
-function callCost(call: CallUsage, table: PricingTable, date: Date): number | null {
+/** Actual USD for one call, decomposed by token type (Anthropic cache economics). */
+function callCostParts(call: CallUsage, table: PricingTable, date: Date): CostParts | null {
   const model = table.models.find((m) => m.id === call.model);
   const rate = model ? resolveRate(model, date) : null;
-  if (!rate || rate.inputPerMTok === undefined) return null;
+  if (!rate) return null;
   const inRate = rate.inputPerMTok / 1_000_000;
   const outRate = (rate.outputPerMTok ?? 0) / 1_000_000;
-  return (
-    call.input * inRate +
-    call.cacheCreate5m * inRate * CACHE.write["5m"] +
-    call.cacheCreate1h * inRate * CACHE.write["1h"] +
-    call.cacheRead * inRate * CACHE.read +
-    call.output * outRate
-  );
+  return {
+    freshInput: call.input * inRate,
+    cacheWrite: call.cacheCreate5m * inRate * CACHE.write["5m"] + call.cacheCreate1h * inRate * CACHE.write["1h"],
+    cacheRead: call.cacheRead * inRate * CACHE.read,
+    output: call.output * outRate,
+  };
+}
+
+function partsTotal(p: CostParts): number {
+  return p.cacheRead + p.cacheWrite + p.freshInput + p.output;
 }
 
 /**
@@ -171,8 +184,9 @@ export function measureUsage(
   const turns: Turn[] = [];
   const models = new Set<string>();
   const days = new Set<string>();
+  const perModel = new Map<string, ModelUsage>();
+  const composition: CostComposition = { cacheRead: 0, cacheWrite: 0, freshInput: 0, output: 0 };
   let apiCalls = 0;
-  let totalOutput = 0;
   let cacheReadSum = 0;
   let cacheInputSum = 0; // read + creation + fresh input, the denominator for read rate
   let create5m = 0;
@@ -182,6 +196,15 @@ export function measureUsage(
   let unpricedCalls = 0;
   let firstAt = "";
   let lastAt = "";
+
+  const modelBucket = (id: string): ModelUsage => {
+    let b = perModel.get(id);
+    if (!b) {
+      b = { model: id, calls: 0, outputTokens: 0, contextTokens: 0, costUSD: 0, share: 0 };
+      perModel.set(id, b);
+    }
+    return b;
+  };
 
   for (const file of files) {
     let current: Turn | null = null;
@@ -201,12 +224,24 @@ export function measureUsage(
 
       const call = extractUsage(event);
       if (!call) continue;
+      models.add(call.model);
 
       // Cost counts every call actually billed, including sidechains.
-      const c = callCost(call, table, ts ? new Date(ts) : new Date());
-      if (c === null) unpricedCalls++;
-      else cost += c;
-      models.add(call.model);
+      const parts = callCostParts(call, table, ts ? new Date(ts) : new Date());
+      const bucket = modelBucket(call.model);
+      bucket.calls++;
+      bucket.outputTokens += call.output;
+      bucket.contextTokens += call.cacheRead + call.cacheCreate5m + call.cacheCreate1h;
+      if (parts === null) {
+        unpricedCalls++;
+      } else {
+        cost += partsTotal(parts);
+        bucket.costUSD += partsTotal(parts);
+        composition.cacheRead += parts.cacheRead;
+        composition.cacheWrite += parts.cacheWrite;
+        composition.freshInput += parts.freshInput;
+        composition.output += parts.output;
+      }
 
       // Turn/behaviour metrics use main-chain calls only.
       if (call.sidechain) continue;
@@ -217,7 +252,6 @@ export function measureUsage(
       current.calls++;
       current.output += call.output;
       apiCalls++;
-      totalOutput += call.output;
       const created = call.cacheCreate5m + call.cacheCreate1h;
       cacheReadSum += call.cacheRead;
       cacheInputSum += call.cacheRead + created + call.input;
@@ -232,15 +266,25 @@ export function measureUsage(
 
   const activeDays = Math.max(1, days.size);
   const totalCreate = create5m + create1h;
+  const durationHours =
+    firstAt && lastAt ? (new Date(lastAt).getTime() - new Date(firstAt).getTime()) / 3_600_000 : 0;
+
+  const byModel = [...perModel.values()]
+    .map((m) => ({ ...m, share: cost > 0 ? m.costUSD / cost : 0 }))
+    .sort((a, b) => b.costUSD - a.costUSD);
 
   return {
+    tool: TOOL_LABEL,
     sessions: files.length,
     apiCalls,
     turns: realTurns.length,
     firstAt,
     lastAt,
+    durationHours,
     activeDays,
     models: [...models].sort(),
+    byModel,
+    composition,
     apiCallsPerTurn: stats(realTurns.map((t) => t.calls)),
     outputTokensPerTurn: stats(realTurns.map((t) => t.output)),
     turnsPerDay: realTurns.length / activeDays,

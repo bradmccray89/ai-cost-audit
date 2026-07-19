@@ -6,13 +6,17 @@ import { makeConfig } from "./helpers.js";
 
 function profile(overrides: Partial<UsageProfile> = {}): UsageProfile {
   return {
+    tool: "Claude Code",
     sessions: 1,
     apiCalls: 40,
     turns: 10,
     firstAt: "2026-07-10T00:00:00Z",
     lastAt: "2026-07-14T00:00:00Z",
+    durationHours: 96,
     activeDays: 5,
     models: ["claude-opus-4-8"],
+    byModel: [],
+    composition: { cacheRead: 0, cacheWrite: 0, freshInput: 0, output: 0 },
     apiCallsPerTurn: { min: 1, median: 4, max: 12 },
     outputTokensPerTurn: { min: 100, median: 1500, max: 5000 },
     turnsPerDay: 10,

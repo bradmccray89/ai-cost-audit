@@ -251,9 +251,10 @@ export function renderTerminal(report: Report, cfg: Config): string {
   const m = report.measured;
   if (m) {
     const pct = (v: number) => `${Math.round(v * 100)}%`;
+    const dur = m.durationHours >= 1 ? `${m.durationHours.toFixed(1)}h` : `${Math.round(m.durationHours * 60)}m`;
     out.push(
-      heading("Measured from your usage") +
-        pc.dim(`  (${m.sessions} session${m.sessions === 1 ? "" : "s"}, ${m.firstAt.slice(0, 10)}→${m.lastAt.slice(0, 10)})`),
+      heading(`Measured from your usage — ${m.tool}`) +
+        pc.dim(`  (${m.sessions} session${m.sessions === 1 ? "" : "s"}, ${m.firstAt.slice(0, 10)}→${m.lastAt.slice(0, 10)}, ~${dur})`),
     );
     const cfgCalls = `configured ${cfg.apiCallsPerTurn[0]}–${cfg.apiCallsPerTurn[1]}`;
     const cfgOut = `configured ${num(cfg.outputTokensPerTurn[0])}–${num(cfg.outputTokensPerTurn[1])}`;
@@ -279,6 +280,41 @@ export function renderTerminal(report: Report, cfg: Config): string {
       INDENT +
         pc.dim(`"Cost at API rates" is what this usage would cost pay-as-you-go; on a subscription you pay a flat fee (see Plan advisor).`),
     );
+    blank();
+
+    // Per-model breakdown — which models drove the cost.
+    if (m.byModel.length > 0) {
+      out.push(INDENT + pc.bold("By model"));
+      out.push(
+        ...table(
+          [
+            { header: "Model", align: "left" },
+            { header: "Calls", align: "right" },
+            { header: "Output tok", align: "right" },
+            { header: "Cost", align: "right" },
+            { header: "Share", align: "right" },
+          ],
+          m.byModel.map((mm) => [
+            mm.model,
+            num(mm.calls),
+            num(mm.outputTokens),
+            formatUSD(mm.costUSD),
+            `${Math.round(mm.share * 100)}%`,
+          ]),
+        ),
+      );
+    }
+    // Cost composition — where the money went.
+    const comp = m.composition;
+    out.push(
+      INDENT +
+        pc.dim(
+          `Cost went to: cache reads ${formatUSD(comp.cacheRead)} · cache writes ${formatUSD(comp.cacheWrite)} · ` +
+            `output ${formatUSD(comp.output)} · fresh input ${formatUSD(comp.freshInput)}.`,
+        ),
+    );
+    blank();
+
     // Reconciliation: estimated Claude Code total/turn vs measured actual/turn.
     const est = report.costs.find((c) => c.consumer === "claude-code" && c.totalPerTurn !== null);
     if (est) {

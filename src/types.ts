@@ -155,15 +155,43 @@ export interface Stats {
   max: number;
 }
 
+/** Per-model usage aggregate within a measured tool. */
+export interface ModelUsage {
+  model: string;
+  calls: number;
+  outputTokens: number;
+  /** Cached-prefix tokens seen (cache_read + cache_creation). */
+  contextTokens: number;
+  costUSD: number;
+  /** costUSD / total cost, 0..1. */
+  share: number;
+}
+
+/** Where the measured cost went, in USD (sums to actualCostUSD). */
+export interface CostComposition {
+  cacheRead: number;
+  cacheWrite: number;
+  freshInput: number;
+  output: number;
+}
+
 /** Measured usage read from local Claude Code transcripts (ground truth). */
 export interface UsageProfile {
+  /** The tool these transcripts belong to (e.g., "Claude Code"). */
+  tool: string;
   sessions: number;
   apiCalls: number;
   turns: number;
   firstAt: string;
   lastAt: string;
+  /** Wall-clock hours between first and last event. */
+  durationHours: number;
   activeDays: number;
   models: string[];
+  /** Per-model breakdown of calls, tokens, and cost. */
+  byModel: ModelUsage[];
+  /** Decomposition of actualCostUSD by token type. */
+  composition: CostComposition;
   apiCallsPerTurn: Stats;
   outputTokensPerTurn: Stats;
   turnsPerDay: number;
