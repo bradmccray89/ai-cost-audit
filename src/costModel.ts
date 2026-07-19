@@ -20,11 +20,20 @@ export function cacheEffectiveMultiplier(
 export function cacheFormulaDescription(cfg: Config): string {
   const t = cfg.cache.turnsPerSession;
   const [aLo, aHi] = cfg.apiCallsPerTurn;
+  const [oLo, oHi] = cfg.outputTokensPerTurn;
   return (
     `a user turn = 1 message + its ${aLo}-${aHi} API calls (tool-use round trips); each call ` +
-    `re-sends the baseline. cached cost/turn = per_call_input_cost x calls x (write + read x (S-1)) / S, ` +
-    `S = calls x ${t} turns/session (anthropic: write 1.25x, read 0.1x, 5-min TTL)`
+    `re-sends the baseline. cached input/turn = per_call_input_cost x calls x (write + read x (S-1)) / S, ` +
+    `S = calls x ${t} turns/session (anthropic: write 1.25x, read 0.1x, 5-min TTL). ` +
+    `output/turn = ${oLo}-${oHi} tokens x output_price (never cached); total = cached input + output`
   );
+}
+
+/** Sum two money ranges, or null if either is null. */
+function addRanges(a: MoneyRange | null, b: MoneyRange | null): MoneyRange | null {
+  if (a === null) return b;
+  if (b === null) return a;
+  return { min: a.min + b.min, max: a.max + b.max };
 }
 
 /** Cached cost of one turn at a given API-calls-per-turn count. */
@@ -54,6 +63,7 @@ export function computeCosts(
   models: ModelPricing[],
 ): ModelCost[] {
   const [aLo, aHi] = cfg.apiCallsPerTurn;
+  const [oLo, oHi] = cfg.outputTokensPerTurn;
   const t = cfg.cache.turnsPerSession;
 
   return models.map((model) => {
@@ -65,6 +75,8 @@ export function computeCosts(
         provider: model.provider,
         perTurnUncached: null,
         perTurnCached: null,
+        outputPerTurn: null,
+        totalPerTurn: null,
         daily: cfg.turnsPerDay.map((turnsPerDay) => ({
           turnsPerDay,
           uncached: null,
@@ -93,25 +105,40 @@ export function computeCosts(
       };
     }
 
+    // Output tokens are generated fresh each turn — never cached, always at the
+    // full output price.
+    let outputPerTurn: MoneyRange | null = null;
+    if (model.outputPerMTok !== null) {
+      outputPerTurn = {
+        min: (oLo / 1_000_000) * model.outputPerMTok,
+        max: (oHi / 1_000_000) * model.outputPerMTok,
+      };
+    }
+
+    // All-in per turn: realistic cached input (or uncached if no cache) + output.
+    const totalPerTurn = addRanges(perTurnCached ?? perTurnUncached, outputPerTurn);
+
     const scale = (range: MoneyRange | null, factor: number): MoneyRange | null =>
       range === null ? null : { min: range.min * factor, max: range.max * factor };
 
+    // Daily projections use the all-in total. "cached" = total with caching,
+    // "uncached" = total without caching (both include output).
+    const totalUncached = addRanges(perTurnUncached, outputPerTurn)!;
     const daily: DailyProjection[] = cfg.turnsPerDay.map((turnsPerDay) => ({
       turnsPerDay,
-      uncached: scale(perTurnUncached, turnsPerDay),
-      cached: scale(perTurnCached, turnsPerDay),
+      uncached: scale(totalUncached, turnsPerDay),
+      cached: scale(totalPerTurn, turnsPerDay),
     }));
 
     // Runway: how many days the monthly budget lasts at the middle turns/day
-    // scenario (per developer, times team size), using the cached figure when
-    // available. Higher cost (max) → shorter runway (min days), and vice versa.
+    // scenario (per developer, times team size), using the all-in total. Higher
+    // cost (max) → shorter runway (min days), and vice versa.
     let runwayDays: MoneyRange | null = null;
-    if (cfg.monthlyBudget !== null && cfg.turnsPerDay.length > 0) {
+    if (cfg.monthlyBudget !== null && cfg.turnsPerDay.length > 0 && totalPerTurn !== null) {
       const sorted = [...cfg.turnsPerDay].sort((a, b) => a - b);
       const midRate = sorted[Math.floor(sorted.length / 2)]!;
-      const cost = perTurnCached ?? perTurnUncached;
-      const perDayMin = cost.min * midRate * cfg.developers;
-      const perDayMax = cost.max * midRate * cfg.developers;
+      const perDayMin = totalPerTurn.min * midRate * cfg.developers;
+      const perDayMax = totalPerTurn.max * midRate * cfg.developers;
       if (perDayMin > 0 && perDayMax > 0) {
         runwayDays = {
           min: cfg.monthlyBudget / perDayMax,
@@ -126,6 +153,8 @@ export function computeCosts(
       provider: model.provider,
       perTurnUncached,
       perTurnCached,
+      outputPerTurn,
+      totalPerTurn,
       daily,
       runwayDays,
     };

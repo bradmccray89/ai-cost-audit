@@ -47,7 +47,7 @@ export function renderHtml(report: Report, cfg: Config): string {
   const costRows = costs
     .map(
       (c) =>
-        `<tr><td>${esc(CONSUMER_LABELS[c.consumer])}</td><td>${esc(c.model)}</td><td class="r">${formatUSDRange(c.perTurnUncached)}</td><td class="r">${formatUSDRange(c.perTurnCached)}</td></tr>`,
+        `<tr><td>${esc(CONSUMER_LABELS[c.consumer])}</td><td>${esc(c.model)}</td><td class="r">${formatUSDRange(c.perTurnUncached)}</td><td class="r">${formatUSDRange(c.perTurnCached)}</td><td class="r">${formatUSDRange(c.outputPerTurn)}</td><td class="r"><strong>${formatUSDRange(c.totalPerTurn)}</strong></td></tr>`,
     )
     .join("\n");
 
@@ -118,10 +118,10 @@ ${consumerRows}
 </table>
 <p class="muted">Tool overhead = the tool's own system prompt + built-in tool definitions, loaded before any repo file. Shipped estimates as of ${esc(meta.systemOverheadAsOf)}; override via config.systemOverheadTokens.</p>
 
-<h2>Estimated cost per turn (baseline input only)</h2>
-<p class="muted">A turn is one user message and the ${num(cfg.apiCallsPerTurn[0])}&ndash;${num(cfg.apiCallsPerTurn[1])} API calls it triggers (tool-use round trips); each re-sends the baseline, so costs are ranges. Tune apiCallsPerTurn to your workflow.</p>
+<h2>Estimated cost per turn</h2>
+<p class="muted">A turn is one user message and the ${num(cfg.apiCallsPerTurn[0])}&ndash;${num(cfg.apiCallsPerTurn[1])} API calls it triggers (tool-use round trips); each re-sends the baseline. Output is a configured ${num(cfg.outputTokensPerTurn[0])}&ndash;${num(cfg.outputTokensPerTurn[1])} tokens/turn, never cached (pending per-user measurement). Total/turn = cached input + output.</p>
 <table>
-<tr><th>Tool</th><th>Model</th><th class="r">Uncached/turn</th><th class="r">With caching/turn</th></tr>
+<tr><th>Tool</th><th>Model</th><th class="r">Input uncached</th><th class="r">Input cached</th><th class="r">Output</th><th class="r">Total/turn</th></tr>
 ${costRows}
 </table>
 <p class="muted">${esc(meta.cacheFormula)}</p>

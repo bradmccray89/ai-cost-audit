@@ -32,6 +32,7 @@ describe("computeCosts", () => {
       providers: ["anthropic"],
       turnsPerDay: [100],
       apiCallsPerTurn: [1, 1],
+      outputTokensPerTurn: [0, 0], // isolate input for this assertion
       cache: { enabled: true, turnsPerSession: 10 },
       monthlyBudget: null,
     });
@@ -43,6 +44,7 @@ describe("computeCosts", () => {
     expect(c.perTurnUncached!.max).toBeCloseTo(0.5, 10);
     // Session API calls S = 1 * 10 = 10 -> multiplier (1.25 + 0.1*9)/10 = 0.215.
     expect(c.perTurnCached!.min).toBeCloseTo(0.1075, 10);
+    // Output zeroed -> daily total equals cached input: 0.1075 * 100 = 10.75.
     expect(c.daily[0]!.cached!.min).toBeCloseTo(10.75, 10);
   });
 
@@ -72,15 +74,47 @@ describe("computeCosts", () => {
       providers: ["anthropic"],
       turnsPerDay: [50, 200, 1000],
       apiCallsPerTurn: [1, 1],
+      outputTokensPerTurn: [0, 0], // isolate input for a clean runway assertion
       cache: { enabled: true, turnsPerSession: 10 },
       monthlyBudget: 100,
       developers: 1,
     });
     const c = computeCosts("claude-code", { anthropic: 100_000 }, cfg, modelsFor(cfg))[0]!;
     // Cached per turn 0.1075; mid scenario 200 turns/day -> $21.50/day.
-    // At [1,1] the range collapses: runway = 100 / 21.5 ≈ 4.651 days.
+    // At [1,1] with no output the range collapses: runway = 100 / 21.5 ≈ 4.651 days.
     expect(c.runwayDays!.min).toBeCloseTo(100 / 21.5, 5);
     expect(c.runwayDays!.max).toBeCloseTo(100 / 21.5, 5);
+  });
+
+  it("prices output per turn and folds it into the all-in total", async () => {
+    const cfg = await makeConfig({
+      models: ["claude-opus-4-8"],
+      providers: ["anthropic"],
+      turnsPerDay: [200],
+      apiCallsPerTurn: [1, 1],
+      outputTokensPerTurn: [500, 4000],
+      cache: { enabled: true, turnsPerSession: 10 },
+      monthlyBudget: 100,
+      developers: 1,
+    });
+    const c = computeCosts("claude-code", { anthropic: 100_000 }, cfg, modelsFor(cfg))[0]!;
+    // Output at $25/MTok: 500 tok -> $0.0125, 4000 tok -> $0.10.
+    expect(c.outputPerTurn!.min).toBeCloseTo(0.0125, 10);
+    expect(c.outputPerTurn!.max).toBeCloseTo(0.1, 10);
+    // Total = cached input (0.1075) + output.
+    expect(c.totalPerTurn!.min).toBeCloseTo(0.1075 + 0.0125, 10);
+    expect(c.totalPerTurn!.max).toBeCloseTo(0.1075 + 0.1, 10);
+    // Daily "cached" now carries the all-in total: min = 0.12 * 200 = 24.
+    expect(c.daily[0]!.cached!.min).toBeCloseTo(24, 6);
+    // Runway shortens vs input-only: total > input, so fewer days than 100/21.5.
+    expect(c.runwayDays!.min).toBeLessThan(100 / 21.5);
+  });
+
+  it("leaves output null when the model has no output pricing", async () => {
+    const cfg = await makeConfig({ models: ["gpt"], providers: ["openai"] });
+    const c = computeCosts("claude-code", { openai: 100_000 }, cfg, modelsFor(cfg))[0]!;
+    expect(c.outputPerTurn).toBeNull();
+    expect(c.totalPerTurn).toBeNull();
   });
 
   it("returns nulls when pricing is not set", async () => {

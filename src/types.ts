@@ -101,7 +101,11 @@ export interface ModelCost {
   perTurnUncached: MoneyRange | null;
   /** USD per turn, steady-state with prompt caching. null if no cache model. */
   perTurnCached: MoneyRange | null;
-  /** USD per day for each configured turns/day scenario. */
+  /** USD of output tokens per turn (never cached). null if no output pricing. */
+  outputPerTurn: MoneyRange | null;
+  /** All-in USD per turn: cached input (or uncached if no cache) + output. */
+  totalPerTurn: MoneyRange | null;
+  /** USD per day for each configured turns/day scenario (all-in total). */
   daily: DailyProjection[];
   /** Days the monthly budget lasts (team-wide), cached model when available. */
   runwayDays: MoneyRange | null;
@@ -189,6 +193,8 @@ export interface Config {
   turnsPerDay: number[];
   /** API calls (tool-use round trips) per user turn, as a [min, max] range. */
   apiCallsPerTurn: [number, number];
+  /** Total output tokens generated per user turn, as a [min, max] range. */
+  outputTokensPerTurn: [number, number];
   cache: { enabled: boolean; turnsPerSession: number };
   variable: { conversationHistory: [number, number]; taskFiles: [number, number] };
   calibration: Record<string, number>;

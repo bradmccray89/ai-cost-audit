@@ -17,6 +17,7 @@ const configSchema = z
     growthThresholdPct: z.number().positive().default(20),
     turnsPerDay: z.array(z.number().positive()).default([50, 200, 1000]),
     apiCallsPerTurn: rangeSchema.default([1, 15]),
+    outputTokensPerTurn: rangeSchema.default([500, 4000]),
     cache: z
       .object({
         enabled: z.boolean().default(true),

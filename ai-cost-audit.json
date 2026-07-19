@@ -7,6 +7,7 @@
   "growthThresholdPct": 20,
   "turnsPerDay": [50, 200, 1000],
   "apiCallsPerTurn": [1, 15],
+  "outputTokensPerTurn": [500, 4000],
   "cache": { "enabled": true, "turnsPerSession": 10 },
   "variable": {
     "conversationHistory": [8000, 25000],

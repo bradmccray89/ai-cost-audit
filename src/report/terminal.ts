@@ -158,36 +158,42 @@ export function renderTerminal(report: Report, cfg: Config): string {
   );
   blank();
 
-  // 3. Cost per turn
+  // 3. Cost per turn (input + output)
   const [aLo, aHi] = cfg.apiCallsPerTurn;
-  out.push(heading("Cost per turn") + pc.dim(`  (${aLo}–${aHi} API calls/turn, baseline input only)`));
+  const [oLo, oHi] = cfg.outputTokensPerTurn;
+  out.push(heading("Cost per turn") + pc.dim(`  (${aLo}–${aHi} API calls/turn)`));
   out.push(
     ...table(
       [
         { header: "Tool", align: "left" },
         { header: "Model", align: "left" },
-        { header: "Uncached", align: "right" },
-        { header: "Cached (typical)", align: "right" },
+        { header: "Input uncached", align: "right" },
+        { header: "Input cached", align: "right" },
+        { header: "Output", align: "right" },
+        { header: "Total/turn", align: "right" },
       ],
       costs.map((c) => [
         CONSUMER_LABELS[c.consumer],
         c.model,
         formatUSDRange(c.perTurnUncached),
         formatUSDRange(c.perTurnCached),
+        formatUSDRange(c.outputPerTurn),
+        formatUSDRange(c.totalPerTurn),
       ]),
     ),
   );
   out.push(
     INDENT +
       pc.dim(
-        `A turn = 1 message + its API calls (tool-use round trips); each re-sends the ` +
-          `baseline. Tune apiCallsPerTurn to your workflow.`,
+        `A turn = 1 message + its API calls (each re-sends the baseline). Output = ` +
+          `${num(oLo)}–${num(oHi)} tokens/turn, never cached. Total = cached input + output. ` +
+          `Tune apiCallsPerTurn / outputTokensPerTurn.`,
       ),
   );
   blank();
 
   // 4. Daily projections, one compact table per tool: models x turn rates.
-  out.push(heading("Daily projections") + pc.dim("  (cached, per developer)"));
+  out.push(heading("Daily projections") + pc.dim("  (all-in: cached input + output, per developer)"));
   const costsByConsumer = new Map<Consumer, ModelCost[]>();
   for (const c of costs) {
     const list = costsByConsumer.get(c.consumer) ?? [];

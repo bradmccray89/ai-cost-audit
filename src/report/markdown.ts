@@ -125,23 +125,27 @@ export function renderMarkdown(report: Report, cfg: Config): string {
       lines.push(`**${CONSUMER_LABELS[consumer]}** (baseline ${num(totals.byConsumer[consumer]!.total)} tokens)`);
       lines.push("");
     }
-    lines.push(`| Model | Uncached/turn | With caching/turn |`);
-    lines.push(`|---|---:|---:|`);
+    lines.push(`| Model | Input uncached | Input cached | Output | Total/turn |`);
+    lines.push(`|---|---:|---:|---:|---:|`);
     for (const c of consumerCosts) {
       lines.push(
-        `| ${c.model} | ${formatUSDRange(c.perTurnUncached)} | ${formatUSDRange(c.perTurnCached)} |`,
+        `| ${c.model} | ${formatUSDRange(c.perTurnUncached)} | ${formatUSDRange(c.perTurnCached)} | ${formatUSDRange(c.outputPerTurn)} | **${formatUSDRange(c.totalPerTurn)}** |`,
       );
     }
     lines.push("");
   }
+  const [oLo, oHi] = cfg.outputTokensPerTurn;
   lines.push(
-    `Cost figures use each tool's own total baseline (repo + global + tool overhead). ` +
-      `"With caching" models prompt caching: ${meta.cacheFormula}.`,
+    `Input uses each tool's own total baseline (repo + global + tool overhead); ` +
+      `output is a configured ${num(oLo)}–${num(oHi)} tokens/turn, never cached (pending ` +
+      `per-user measurement). **Total/turn = cached input + output.** ${meta.cacheFormula}.`,
   );
   lines.push("");
 
-  // 4. Daily projections + runway
+  // 4. Daily projections + runway (all-in: input + output)
   lines.push(`## Daily usage projections`);
+  lines.push("");
+  lines.push(`All-in per turn (input + output), per developer:`);
   lines.push("");
   for (const consumer of consumers) {
     for (const c of costsByConsumer.get(consumer) ?? []) {

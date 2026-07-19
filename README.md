@@ -50,16 +50,17 @@ system prompt + built-in tool definitions, loaded before any repo file.
 | Cursor         |  3,980 |      0 |         9,000 | **12,980** |
 | GitHub Copilot |  2,150 |      0 |         4,000 |  **6,150** |
 
-## Estimated cost per turn (baseline input only)
+## Estimated cost per turn
 
 Claude Code (baseline 81,690 tokens). A turn is one user message and the 1–15 API
-calls it triggers — each re-sends the baseline, so costs are ranges:
+calls it triggers — each re-sends the baseline. Output (500–4,000 tokens/turn) is
+priced separately and never cached; Total = cached input + output:
 
-| Model           | Uncached/turn | With caching/turn |
-|-----------------|--------------:|------------------:|
-| claude-opus-4-8 | $0.41–$6.13   | $0.09–$0.68       |
+| Model           | Input uncached | Input cached | Output      | Total/turn  |
+|-----------------|---------------:|-------------:|------------:|------------:|
+| claude-opus-4-8 | $0.41–$6.13    | $0.09–$0.68  | $0.01–$0.10 | $0.10–$0.78 |
 
-At 200 turns/day per developer (3 developers), your $100/month budget lasts ~1.6–9.6 days.
+At 200 turns/day per developer (3 developers), your $100/month budget lasts ~1.4–8.9 days.
 
 ## High-impact findings
 
@@ -126,6 +127,7 @@ Drop an `ai-cost-audit.json` in your repo root (all fields optional — zero-con
   "growthThresholdPct": 20,
   "turnsPerDay": [50, 200, 1000],
   "apiCallsPerTurn": [1, 15],
+  "outputTokensPerTurn": [500, 4000],
   "cache": { "enabled": true, "turnsPerSession": 10 },
   "variable": {
     "conversationHistory": [8000, 25000],
@@ -190,10 +192,14 @@ The tool models both. A **turn** is one user message and the `apiCallsPerTurn`
   pays `calls ×` that. (At `apiCallsPerTurn = [1,1]` this reduces to the classic
   ~0.215× single-request figure.)
 
-`apiCallsPerTurn` is a rough default pending per-user measurement from local
-transcripts (on the roadmap); tune it to your workflow. The formula is printed in
-every report so the math is auditable. Cost is input-side only; output tokens are
-priced separately and are out of scope for now (also on the roadmap).
+**Output tokens** are added as a separate line: `outputTokensPerTurn × output_price`,
+never cached (output is generated fresh every turn at full price). Output is priced
+~5× input and is commonly 20–40% of real spend, so the report shows a per-turn
+**Total = cached input + output**, and daily/runway figures use that all-in total.
+
+`apiCallsPerTurn` and `outputTokensPerTurn` are rough defaults pending per-user
+measurement from local transcripts (on the roadmap); tune them to your workflow. The
+formula is printed in every report so the math is auditable.
 
 ## Honesty (read this)
 

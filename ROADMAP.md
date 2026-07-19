@@ -28,9 +28,11 @@ add new findings at the appropriate tier, not the bottom.
       session calls. Config renamed requests→turns. Still a configured guess —
       transcript measurement (tier 2) replaces it with per-user data. Left open:
       per-call *growing history* is still only in the variable range, not per-turn cost.
-- [ ] **Output token modeling.** Output is priced 5× input and is 20–40% of real
-      spend. Add a configurable output-tokens-per-turn range (like `variable`),
-      shown as a separate disclosed line.
+- [x] **Output token modeling.** `outputTokensPerTurn` `[min,max]` range (default
+      [500,4000]), priced at the output rate, never cached, shown as a separate
+      column with an all-in per-turn Total (cached input + output); daily/runway now
+      use the total. Still a generic configured range — transcript measurement
+      (tier 2) replaces it with measured `output_tokens` per turn.
 - [ ] **Verify system overhead constants empirically.** Current 15k/9k/4k are
       estimates. Measure Claude Code's via `/context` in a bare repo or a
       transcript's first-request usage; re-stamp `SYSTEM_OVERHEAD_AS_OF`.

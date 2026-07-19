@@ -184,6 +184,9 @@ describe("runScan (integration on fixture repo)", () => {
       (c) => c.consumer === "copilot" && c.model === "claude-opus-4-8",
     )!;
     expect(copilotCost.perTurnUncached!.min).toBeLessThan(claudeCost.perTurnUncached!.min);
+    // Costs expose output and all-in total, with total > cached input.
+    expect(claudeCost.outputPerTurn!.max).toBeGreaterThan(0);
+    expect(claudeCost.totalPerTurn!.max).toBeGreaterThan(claudeCost.perTurnCached!.max);
   });
 
   it("respects scan.exclude for discovered sources", async () => {
