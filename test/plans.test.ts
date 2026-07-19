@@ -46,9 +46,9 @@ describe("computePlanAdvice", () => {
     expect(advice.apiEquivMonthly).toBeCloseTo(300, 6);
     const api = advice.options.find((o) => o.isApi)!;
     expect(api.monthlyUSD).toBeCloseTo(300, 6);
-    // A subscription is far cheaper than $300 API — cheapest is a plan.
+    // A subscription is cheaper than $300 API — cheapest is a plan.
     expect(advice.cheapest.isApi).toBe(false);
-    expect(planRecommendationText(advice)).toContain("subscription is far cheaper");
+    expect(planRecommendationText(advice)).toMatch(/subscription is much cheaper/);
   });
 
   it("recommends API pay-as-you-go for light usage", async () => {
@@ -63,7 +63,7 @@ describe("computePlanAdvice", () => {
     expect(planRecommendationText(advice)).toContain("API pay-as-you-go");
   });
 
-  it("computes savings vs a configured current plan", async () => {
+  it("recommends switching a light user off an expensive plan to API", async () => {
     const cfg = await makeConfig({ plan: "claude-max-20x" }); // $200
     // Light usage: API is far cheaper than the $200 plan they're on.
     const advice = computePlanAdvice(
@@ -73,9 +73,24 @@ describe("computePlanAdvice", () => {
     );
     expect(advice.current?.id).toBe("claude-max-20x");
     expect(advice.current?.isCurrent).toBe(true);
-    // Savings = 200 - cheapest.
-    expect(advice.savingsVsCurrent).toBeGreaterThan(0);
-    expect(planRecommendationText(advice)).toContain("switch to API");
+    const rec = planRecommendationText(advice);
+    expect(rec).toMatch(/switching from Claude Max 20x to API/);
+    expect(rec).toContain("light");
+  });
+
+  it("never tells a heavy user to downgrade to the cheapest tier", async () => {
+    const cfg = await makeConfig({ plan: "claude-max-5x" }); // $100
+    // Heavy: $10/turn * 10/day * 30 = $3,000/mo API-equivalent.
+    const advice = computePlanAdvice(
+      profile({ actualCostPerTurn: 10, turnsPerDay: 10 }),
+      cfg,
+      bundledPlans(),
+    );
+    const rec = planRecommendationText(advice);
+    // Should keep the subscription, not point at $20 Pro.
+    expect(rec).toContain("keep your subscription");
+    expect(rec).not.toMatch(/Claude Pro/);
+    expect(rec).toContain("Move up a tier only if you hit usage limits");
   });
 
   it("supports a custom current plan via config", async () => {
@@ -85,12 +100,12 @@ describe("computePlanAdvice", () => {
     expect(advice.current?.monthlyUSD).toBe(60);
   });
 
-  it("says you're optimal when already on the cheapest option", async () => {
+  it("keeps a heavy user on their subscription", async () => {
     const cfg = await makeConfig({ plan: "claude-pro" }); // $20, cheapest plan
     // Heavy usage so API >> plans; Pro is the cheapest option and is current.
     const advice = computePlanAdvice(profile({ actualCostPerTurn: 5 }), cfg, bundledPlans());
     expect(advice.cheapest.id).toBe("claude-pro");
     expect(advice.current?.id).toBe("claude-pro");
-    expect(planRecommendationText(advice)).toContain("most cost-effective");
+    expect(planRecommendationText(advice)).toContain("keep your subscription");
   });
 });

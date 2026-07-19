@@ -227,8 +227,12 @@ duration, a **per-model cost breakdown** (which models drove the spend), a
 **cost composition** (cache reads vs writes vs output), and the **actual dollars
 spent** (priced from the recorded per-call token usage, including the 5m/1h
 cache-write split) — each shown next to the configured assumption so the gap is
-visible. It then **reconciles** the estimate against reality ("estimated
-$X/turn vs measured $Y/turn"), and **projects forward from your measured $/turn** —
+visible. When measured data exists, the report **leads with it** and demotes the generic
+estimate to a one-line CI baseline — the estimate prices only the always-loaded repo
+context, so it can't predict a real session's cost (dominated by conversation history
+and files read while working), and the report **explains that gap** rather than
+scoring the estimate against reality. It also **projects forward from your measured
+$/turn** —
 team-wide cost at each volume scenario, at your real measured pace, and how long your
 budget lasts. This forecast is grounded in real per-turn cost, not the generic
 assumptions, so it's the setup-specific number. Real sessions routinely show far more

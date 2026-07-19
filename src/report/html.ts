@@ -88,10 +88,12 @@ export function renderHtml(report: Report, cfg: Config): string {
     const pct = (v: number) => `${Math.round(v * 100)}%`;
     const stat = (s: { min: number; median: number; max: number }) =>
       `${num(Math.round(s.median))} (${num(Math.round(s.min))}&ndash;${num(Math.round(s.max))})`;
-    const est = costs.find((c) => c.consumer === "claude-code" && c.totalPerTurn !== null);
-    const recon = est
-      ? `<p class="muted">Reconciliation: estimated <strong>${formatUSDRange(est.totalPerTurn)}</strong>/turn (${esc(est.model)}) vs measured <strong>${formatUSD(m.actualCostPerTurn)}</strong>/turn actual.</p>`
-      : "";
+    const cc = report.totals.byConsumer["claude-code"];
+    const recon = `<p class="muted">${
+      cc
+        ? `Why this exceeds a static estimate: the estimate prices only your guaranteed baseline (~${num(cc.total)} tok/call); your calls actually averaged ${num(m.avgContextTokens)} tok &mdash; the rest is conversation history and files read while working, which a static scan can't see and which dominate real cost.`
+        : `Why this exceeds a static estimate: your calls averaged ${num(m.avgContextTokens)} tok of context &mdash; mostly conversation history and files read while working, which a static repo scan can't see.`
+    }</p>`;
     const proj = projectMeasured(m, cfg);
     const projRows = proj.daily
       .map((d) => `<tr><td class="r">${num(d.turnsPerDay)}</td><td class="r">${formatUSD(d.teamPerDay)}/day</td><td class="r">${formatUSD(d.teamPerDay * 30)}</td></tr>`)

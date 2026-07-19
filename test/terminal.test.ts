@@ -98,8 +98,9 @@ describe("renderTerminal", () => {
     expect(text).toContain("MEASURED FROM YOUR USAGE");
     expect(text).toContain("Cost at API rates");
     expect(text).toContain("$0.40/turn");
-    // Reconciliation shows because the sample repo has a Claude Code estimate.
-    expect(text).toMatch(/Reconciliation: estimated .* vs measured \$0\.40\/turn/);
+    // The estimate gap is explained, not scored.
+    expect(text).toContain("Why this exceeds a static estimate");
+    expect(text).toContain("45,000 tok");
     // Tailored forward projection from measured $/turn.
     expect(text).toContain("PROJECTED FROM YOUR MEASURED USAGE");
     expect(text).toContain("(measured)");
@@ -108,6 +109,10 @@ describe("renderTerminal", () => {
     expect(text).toContain("PLAN ADVISOR");
     expect(text).toContain("API pay-as-you-go");
     expect(text).toContain("Claude Max 5x");
+    // The generic estimate is demoted to a one-line CI baseline in measured mode.
+    expect(text).toContain("REPO BASELINE");
+    expect(text).not.toContain("COST PER TURN");
+    expect(text).not.toContain("DAILY PROJECTIONS");
   });
 
   it("omits the measured section when no profile is present", async () => {

@@ -95,169 +95,192 @@ function elide(path: string, max: number): string {
 export function renderTerminal(report: Report, cfg: Config): string {
   const width = Math.min(Math.max(process.stdout.columns ?? 100, 60), 120);
   const { totals, costs, findings, meta } = report;
+  const m = report.measured;
+  const advice = report.planAdvice;
   const out: string[] = [];
   const blank = () => out.push("");
+  const consumers = CONSUMER_ORDER.filter((c) => totals.byConsumer[c] !== undefined);
 
   out.push(pc.bold(pc.cyan("AI Context Cost Audit")));
   out.push(pc.dim(`${meta.projectPath} · ${meta.scannedAt}`));
   blank();
 
-  // 1. Guaranteed context by kind
-  out.push(heading("Guaranteed context") + pc.dim("  (loaded on every request)"));
-  const kindTotals = new Map<string, number>();
-  for (const s of report.sources.filter((x) => x.usage === "guaranteed")) {
-    kindTotals.set(s.kind, (kindTotals.get(s.kind) ?? 0) + s.tokens);
-  }
-  const kindRows = [...kindTotals.entries()]
-    .sort((a, b) => b[1] - a[1])
-    .map(([kind, tokens]) => [KIND_LABELS[kind] ?? kind, num(tokens)]);
-  kindRows.push(["Repo total (CI-gated)", num(totals.gatedBaseline)]);
-  if (totals.globalBaseline > 0) {
-    kindRows.push(["Global user files (not gated)", num(totals.globalBaseline)]);
-  }
-  out.push(
-    ...table(
-      [
-        { header: "Source kind", align: "left" },
-        { header: "Tokens", align: "right" },
-      ],
-      kindRows,
-      (line, i) => (i === kindTotals.size ? pc.bold(line) : line),
-    ),
-  );
-  if (totals.conditional > 0) {
-    blank();
-    out.push(
-      INDENT +
-        pc.dim(
-          `+ ${num(totals.conditional)} conditional tokens across ` +
-            `${report.sources.filter((s) => s.usage === "conditional").length} sources (load for some tasks)`,
-        ),
-    );
-  }
-  blank();
-
-  // 2. Per-tool baselines
-  const consumers = CONSUMER_ORDER.filter((c) => totals.byConsumer[c] !== undefined);
-  out.push(heading("Per-tool baselines"));
-  out.push(
-    ...table(
-      [
-        { header: "Tool", align: "left" },
-        { header: "Repo", align: "right" },
-        { header: "Global", align: "right" },
-        { header: "Overhead", align: "right" },
-        { header: "Total", align: "right" },
-      ],
-      consumers.map((c) => {
-        const t = totals.byConsumer[c]!;
-        return [CONSUMER_LABELS[c], num(t.gated), num(t.global), num(t.systemOverhead), num(t.total)];
-      }),
-      (line) => pc.bold(line),
-    ),
-  );
-  out.push(
-    ...wrap(
-      `Overhead = the tool's own system prompt + built-in tools (estimates as of ` +
-        `${meta.systemOverheadAsOf}; override via systemOverheadTokens). Costs below use each ` +
-        `tool's Total — no request loads more than one tool's baseline.`,
-      width,
-      INDENT,
-      INDENT,
-    ).map((l) => pc.dim(l)),
-  );
-  blank();
-
-  // 3. Cost per turn (input + output)
-  const [aLo, aHi] = cfg.apiCallsPerTurn;
-  const [oLo, oHi] = cfg.outputTokensPerTurn;
-  out.push(heading("Cost per turn") + pc.dim(`  (${aLo}–${aHi} API calls/turn)`));
-  out.push(
-    ...table(
-      [
-        { header: "Tool", align: "left" },
-        { header: "Model", align: "left" },
-        { header: "Input uncached", align: "right" },
-        { header: "Input cached", align: "right" },
-        { header: "Output", align: "right" },
-        { header: "Total/turn", align: "right" },
-      ],
-      costs.map((c) => [
-        CONSUMER_LABELS[c.consumer],
-        c.model,
-        formatUSDRange(c.perTurnUncached),
-        formatUSDRange(c.perTurnCached),
-        formatUSDRange(c.outputPerTurn),
-        formatUSDRange(c.totalPerTurn),
-      ]),
-    ),
-  );
-  out.push(
-    INDENT +
-      pc.dim(
-        `A turn = 1 message + its API calls (each re-sends the baseline). Output = ` +
-          `${num(oLo)}–${num(oHi)} tokens/turn, never cached. Total = cached input + output. ` +
-          `Tune apiCallsPerTurn / outputTokensPerTurn.`,
-      ),
-  );
-  blank();
-
-  // 4. Daily projections, one compact table per tool: models x turn rates.
-  out.push(heading("Daily projections") + pc.dim("  (all-in: cached input + output, per developer)"));
-  const costsByConsumer = new Map<Consumer, ModelCost[]>();
-  for (const c of costs) {
-    const list = costsByConsumer.get(c.consumer) ?? [];
-    list.push(c);
-    costsByConsumer.set(c.consumer, list);
-  }
-  for (const consumer of consumers) {
-    const consumerCosts = (costsByConsumer.get(consumer) ?? []).filter(
-      (c) => c.perTurnUncached !== null,
-    );
-    if (consumerCosts.length === 0) continue;
-    const rates = consumerCosts[0]!.daily.map((d) => d.turnsPerDay);
-    out.push(INDENT + pc.bold(CONSUMER_LABELS[consumer]));
+  // ---------- Full generic estimate (shown only without measured data) ----------
+  const guaranteedContext = () => {
+    out.push(heading("Guaranteed context") + pc.dim("  (loaded on every request)"));
+    const kindTotals = new Map<string, number>();
+    for (const s of report.sources.filter((x) => x.usage === "guaranteed")) {
+      kindTotals.set(s.kind, (kindTotals.get(s.kind) ?? 0) + s.tokens);
+    }
+    const kindRows = [...kindTotals.entries()]
+      .sort((a, b) => b[1] - a[1])
+      .map(([kind, tokens]) => [KIND_LABELS[kind] ?? kind, num(tokens)]);
+    kindRows.push(["Repo total (CI-gated)", num(totals.gatedBaseline)]);
+    if (totals.globalBaseline > 0) {
+      kindRows.push(["Global user files (not gated)", num(totals.globalBaseline)]);
+    }
     out.push(
       ...table(
         [
-          { header: "Model", align: "left" },
-          ...rates.map((r) => ({ header: `${num(r)} turns/day`, align: "right" as const })),
+          { header: "Source kind", align: "left" },
+          { header: "Tokens", align: "right" },
         ],
-        consumerCosts.map((c) => [
+        kindRows,
+        (line, i) => (i === kindTotals.size ? pc.bold(line) : line),
+      ),
+    );
+    if (totals.conditional > 0) {
+      blank();
+      out.push(
+        INDENT +
+          pc.dim(
+            `+ ${num(totals.conditional)} conditional tokens across ` +
+              `${report.sources.filter((s) => s.usage === "conditional").length} sources (load for some tasks)`,
+          ),
+      );
+    }
+    blank();
+  };
+
+  const perToolBaselines = () => {
+    out.push(heading("Per-tool baselines"));
+    out.push(
+      ...table(
+        [
+          { header: "Tool", align: "left" },
+          { header: "Repo", align: "right" },
+          { header: "Global", align: "right" },
+          { header: "Overhead", align: "right" },
+          { header: "Total", align: "right" },
+        ],
+        consumers.map((c) => {
+          const t = totals.byConsumer[c]!;
+          return [CONSUMER_LABELS[c], num(t.gated), num(t.global), num(t.systemOverhead), num(t.total)];
+        }),
+        (line) => pc.bold(line),
+      ),
+    );
+    out.push(
+      ...wrap(
+        `Overhead = the tool's own system prompt + built-in tools (estimates as of ` +
+          `${meta.systemOverheadAsOf}; override via systemOverheadTokens). Costs below use each ` +
+          `tool's Total — no request loads more than one tool's baseline.`,
+        width,
+        INDENT,
+        INDENT,
+      ).map((l) => pc.dim(l)),
+    );
+    blank();
+  };
+
+  const costPerTurn = () => {
+    const [aLo, aHi] = cfg.apiCallsPerTurn;
+    const [oLo, oHi] = cfg.outputTokensPerTurn;
+    out.push(heading("Cost per turn") + pc.dim(`  (${aLo}–${aHi} API calls/turn)`));
+    out.push(
+      ...table(
+        [
+          { header: "Tool", align: "left" },
+          { header: "Model", align: "left" },
+          { header: "Input uncached", align: "right" },
+          { header: "Input cached", align: "right" },
+          { header: "Output", align: "right" },
+          { header: "Total/turn", align: "right" },
+        ],
+        costs.map((c) => [
+          CONSUMER_LABELS[c.consumer],
           c.model,
-          ...c.daily.map((d) => `${formatUSDRange(d.cached ?? d.uncached)}/day`),
+          formatUSDRange(c.perTurnUncached),
+          formatUSDRange(c.perTurnCached),
+          formatUSDRange(c.outputPerTurn),
+          formatUSDRange(c.totalPerTurn),
         ]),
       ),
     );
-    const withRunway = consumerCosts.filter((c) => c.runwayDays !== null);
-    if (withRunway.length > 0 && cfg.monthlyBudget !== null) {
-      const sorted = [...cfg.turnsPerDay].sort((a, b) => a - b);
-      const midRate = sorted[Math.floor(sorted.length / 2)]!;
-      for (const c of withRunway) {
-        out.push(
-          INDENT +
-            pc.dim(
-              `$${cfg.monthlyBudget}/mo lasts ~${formatDays(c.runwayDays)} on ${c.model} ` +
-                `at ${num(midRate)} turns/day` +
-                (cfg.developers > 1 ? ` × ${cfg.developers} devs` : ""),
-            ),
-        );
-      }
-    }
+    out.push(
+      INDENT +
+        pc.dim(
+          `A turn = 1 message + its API calls (each re-sends the baseline). Output = ` +
+            `${num(oLo)}–${num(oHi)} tokens/turn, never cached. Total = cached input + output. ` +
+            `Tune apiCallsPerTurn / outputTokensPerTurn.`,
+        ),
+    );
     blank();
-  }
+  };
 
-  // 4b. Measured from local transcripts (ground truth), when --measure found data.
-  const m = report.measured;
-  if (m) {
+  const dailyProjections = () => {
+    out.push(heading("Daily projections") + pc.dim("  (all-in: cached input + output, per developer)"));
+    const costsByConsumer = new Map<Consumer, ModelCost[]>();
+    for (const c of costs) {
+      const list = costsByConsumer.get(c.consumer) ?? [];
+      list.push(c);
+      costsByConsumer.set(c.consumer, list);
+    }
+    for (const consumer of consumers) {
+      const consumerCosts = (costsByConsumer.get(consumer) ?? []).filter((c) => c.perTurnUncached !== null);
+      if (consumerCosts.length === 0) continue;
+      const rates = consumerCosts[0]!.daily.map((d) => d.turnsPerDay);
+      out.push(INDENT + pc.bold(CONSUMER_LABELS[consumer]));
+      out.push(
+        ...table(
+          [
+            { header: "Model", align: "left" },
+            ...rates.map((r) => ({ header: `${num(r)} turns/day`, align: "right" as const })),
+          ],
+          consumerCosts.map((c) => [
+            c.model,
+            ...c.daily.map((d) => `${formatUSDRange(d.cached ?? d.uncached)}/day`),
+          ]),
+        ),
+      );
+      const withRunway = consumerCosts.filter((c) => c.runwayDays !== null);
+      if (withRunway.length > 0 && cfg.monthlyBudget !== null) {
+        const sorted = [...cfg.turnsPerDay].sort((a, b) => a - b);
+        const midRate = sorted[Math.floor(sorted.length / 2)]!;
+        for (const c of withRunway) {
+          out.push(
+            INDENT +
+              pc.dim(
+                `$${cfg.monthlyBudget}/mo lasts ~${formatDays(c.runwayDays)} on ${c.model} ` +
+                  `at ${num(midRate)} turns/day` +
+                  (cfg.developers > 1 ? ` × ${cfg.developers} devs` : ""),
+              ),
+          );
+        }
+      }
+      blank();
+    }
+  };
+
+  const contextPerCall = () => {
+    out.push(heading("Typical context per API call") + pc.dim("  (baseline + variable context)"));
+    for (const consumer of consumers) {
+      const range = report.requestRanges[consumer];
+      if (!range) continue;
+      out.push(
+        INDENT + `${CONSUMER_LABELS[consumer]}: ` + pc.bold(`${num(range.min)}–${num(range.max)}`) + " input tokens",
+      );
+    }
+    out.push(
+      INDENT +
+        pc.dim(
+          `Variable context is a configured range (history ${num(cfg.variable.conversationHistory[0])}–` +
+            `${num(cfg.variable.conversationHistory[1])}, task files ${num(cfg.variable.taskFiles[0])}–` +
+            `${num(cfg.variable.taskFiles[1])}), not a measurement.`,
+        ),
+    );
+    blank();
+  };
+
+  // ---------- Measured (ground truth) — leads when --measure has data ----------
+  const measuredSection = () => {
+    if (!m) return;
     const pct = (v: number) => `${Math.round(v * 100)}%`;
     const dur = m.durationHours >= 1 ? `${m.durationHours.toFixed(1)}h` : `${Math.round(m.durationHours * 60)}m`;
     out.push(
       heading(`Measured from your usage — ${m.tool}`) +
         pc.dim(`  (${m.sessions} session${m.sessions === 1 ? "" : "s"}, ${m.firstAt.slice(0, 10)}→${m.lastAt.slice(0, 10)}, ~${dur})`),
     );
-    const cfgCalls = `configured ${cfg.apiCallsPerTurn[0]}–${cfg.apiCallsPerTurn[1]}`;
-    const cfgOut = `configured ${num(cfg.outputTokensPerTurn[0])}–${num(cfg.outputTokensPerTurn[1])}`;
     out.push(
       ...table(
         [
@@ -267,8 +290,8 @@ export function renderTerminal(report: Report, cfg: Config): string {
         ],
         [
           ["Turns", num(m.turns), `${num(m.apiCalls)} API calls`],
-          ["API calls/turn", statStr(m.apiCallsPerTurn), cfgCalls],
-          ["Output tokens/turn", statStr(m.outputTokensPerTurn), cfgOut],
+          ["API calls/turn", statStr(m.apiCallsPerTurn), `configured ${cfg.apiCallsPerTurn[0]}–${cfg.apiCallsPerTurn[1]}`],
+          ["Output tokens/turn", statStr(m.outputTokensPerTurn), `configured ${num(cfg.outputTokensPerTurn[0])}–${num(cfg.outputTokensPerTurn[1])}`],
           ["Turns/day (active)", m.turnsPerDay.toFixed(1), `${m.activeDays} active days`],
           ["Cache read rate", pct(m.cacheReadRate), `TTL ${pct(m.ttlSplit["5m"])} 5m / ${pct(m.ttlSplit["1h"])} 1h`],
           ["Avg context/call", `${num(m.avgContextTokens)} tok`, "actual baseline + history"],
@@ -282,7 +305,6 @@ export function renderTerminal(report: Report, cfg: Config): string {
     );
     blank();
 
-    // Per-model breakdown — which models drove the cost.
     if (m.byModel.length > 0) {
       out.push(INDENT + pc.bold("By model"));
       out.push(
@@ -304,7 +326,6 @@ export function renderTerminal(report: Report, cfg: Config): string {
         ),
       );
     }
-    // Cost composition — where the money went.
     const comp = m.composition;
     out.push(
       INDENT +
@@ -313,25 +334,25 @@ export function renderTerminal(report: Report, cfg: Config): string {
             `output ${formatUSD(comp.output)} · fresh input ${formatUSD(comp.freshInput)}.`,
         ),
     );
-    blank();
 
-    // Reconciliation: estimated Claude Code total/turn vs measured actual/turn.
-    const est = report.costs.find((c) => c.consumer === "claude-code" && c.totalPerTurn !== null);
-    if (est) {
-      out.push(
-        INDENT +
-          pc.dim(
-            `Reconciliation: estimated ${formatUSDRange(est.totalPerTurn)}/turn (${est.model}) ` +
-              `vs measured ${formatUSD(m.actualCostPerTurn)}/turn actual.`,
-          ),
-      );
-    }
+    // Explain the gap vs a static estimate instead of scoring it against one.
+    const cc = totals.byConsumer["claude-code"];
+    const why = cc
+      ? `Why this exceeds a static estimate: the estimate prices only your guaranteed baseline ` +
+        `(~${num(cc.total)} tok/call); your calls actually averaged ${num(m.avgContextTokens)} tok — the ` +
+        `rest is conversation history and files read while working, which a static scan can't see and ` +
+        `which dominate real cost.`
+      : `Why this exceeds a static estimate: your calls averaged ${num(m.avgContextTokens)} tok of context — ` +
+        `mostly conversation history and files read while working, which a static repo scan can't see.`;
+    out.push(...wrap(why, width, INDENT, INDENT).map((l) => pc.dim(l)));
     if (m.unpricedCalls > 0) {
       out.push(INDENT + pc.dim(`${num(m.unpricedCalls)} call(s) used a model not in the pricing table (excluded from cost).`));
     }
     blank();
+  };
 
-    // Forward projection from measured actual $/turn — the tailored forecast.
+  const projectionSection = () => {
+    if (!m) return;
     const proj = projectMeasured(m, cfg);
     out.push(heading("Projected from your measured usage") + pc.dim(`  (at ${formatUSD(proj.perTurn)}/turn actual)`));
     out.push(
@@ -361,11 +382,10 @@ export function renderTerminal(report: Report, cfg: Config): string {
       );
     }
     blank();
-  }
+  };
 
-  // 4d. Plan advisor: subscription vs API pay-as-you-go, per developer.
-  const advice = report.planAdvice;
-  if (advice) {
+  const advisorSection = () => {
+    if (!advice) return;
     out.push(heading("Plan advisor") + pc.dim(`  (per developer, at ${formatUSD(advice.apiEquivMonthly)}/mo API-equivalent)`));
     out.push(
       ...table(
@@ -383,9 +403,7 @@ export function renderTerminal(report: Report, cfg: Config): string {
         ]),
       ),
     );
-    for (const line of planRecommendation(advice)) {
-      out.push(INDENT + line);
-    }
+    for (const line of planRecommendation(advice)) out.push(INDENT + line);
     out.push(
       INDENT +
         pc.dim(
@@ -394,28 +412,33 @@ export function renderTerminal(report: Report, cfg: Config): string {
         ),
     );
     blank();
-  }
+  };
 
-  // 5. Typical context per API call
-  out.push(heading("Typical context per API call") + pc.dim("  (baseline + variable context)"));
-  for (const consumer of consumers) {
-    const range = report.requestRanges[consumer];
-    if (!range) continue;
+  // Demoted estimate: the CI baseline as a one-liner, with the full estimate hidden.
+  const baselineOneLiner = () => {
+    out.push(heading("Repo baseline") + pc.dim("  (CI metric)"));
     out.push(
-      INDENT + `${CONSUMER_LABELS[consumer]}: ` + pc.bold(`${num(range.min)}–${num(range.max)}`) + " input tokens",
+      INDENT +
+        pc.bold(`${num(totals.gatedBaseline)} guaranteed tokens`) +
+        pc.dim(` loaded every request — the CI-gated number. Run without --measure for the full generic estimate.`),
     );
-  }
-  out.push(
-    INDENT +
-      pc.dim(
-        `Variable context is a configured range (history ${num(cfg.variable.conversationHistory[0])}–` +
-          `${num(cfg.variable.conversationHistory[1])}, task files ${num(cfg.variable.taskFiles[0])}–` +
-          `${num(cfg.variable.taskFiles[1])}), not a measurement.`,
-      ),
-  );
-  blank();
+    blank();
+  };
 
-  // 6. Findings
+  if (m) {
+    measuredSection();
+    projectionSection();
+    advisorSection();
+    baselineOneLiner();
+  } else {
+    guaranteedContext();
+    perToolBaselines();
+    costPerTurn();
+    dailyProjections();
+    contextPerCall();
+  }
+
+  // Findings
   out.push(heading("Findings"));
   if (findings.length === 0) {
     out.push(INDENT + pc.green("None. Baseline looks lean."));

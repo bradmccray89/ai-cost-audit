@@ -19,32 +19,37 @@ export const KIND_LABELS: Record<string, string> = {
 
 /**
  * Direction-aware plan recommendation (plain text, shared by all renderers).
- * Focuses on the robust signal — subscription vs API — and caveats tier choice,
- * since plan limits are not reliable data.
+ * The robust signal is subscription-vs-API; exact tier choice needs limit data
+ * we don't have, so heavy usage never gets pointed at the cheapest sticker tier
+ * (that would recommend $20 Pro to someone doing thousands/mo of usage).
  */
 export function planRecommendationText(advice: import("../types.js").PlanAdvice): string {
-  const { current, cheapest, savingsVsCurrent } = advice;
-  const cheapestPlan = advice.options.find((o) => !o.isApi);
-  const apiIsCheapest = cheapest.isApi;
-  const save = savingsVsCurrent !== null ? formatUSD(Math.abs(savingsVsCurrent)) : "";
+  const { current, cheapest, apiEquivMonthly } = advice;
+  const plans = advice.options.filter((o) => !o.isApi).sort((a, b) => a.monthlyUSD - b.monthlyUSD);
+  const cheapestPlan = plans[0];
+  // "Subscription wins" = some plan is cheaper than pay-as-you-go, i.e. usage is
+  // heavy enough that a flat fee beats per-token billing.
+  const subscriptionWins = cheapestPlan !== undefined && apiEquivMonthly >= cheapestPlan.monthlyUSD;
+  const api = formatUSD(apiEquivMonthly);
 
-  if (current) {
-    if (current.id === cheapest.id) {
-      return `you're on the most cost-effective option (${current.label}) for your usage.`;
+  if (!subscriptionWins) {
+    // Light usage — pay-as-you-go is cheaper than any subscription.
+    if (current && !current.isApi) {
+      const save = formatUSD(Math.max(0, current.monthlyUSD - apiEquivMonthly));
+      return `your usage is light (~${api}/mo at API rates) — switching from ${current.label} to API pay-as-you-go would save ~${save}/mo.`;
     }
-    if (apiIsCheapest) {
-      return `your usage is light — switch to API pay-as-you-go (~${formatUSD(cheapest.monthlyUSD)}/mo) and save ~${save}/mo per developer.`;
-    }
-    if (current.isApi && cheapestPlan) {
-      return `a subscription is far cheaper than API at your volume — ${cheapestPlan.label} ($${cheapestPlan.monthlyUSD}/mo) would save ~${save}/mo per developer, if it sustains your usage.`;
-    }
-    return `a lower tier (${cheapest.label}, $${cheapest.monthlyUSD}/mo) may suffice and save ~${save}/mo per developer — verify it sustains your volume before downgrading.`;
+    return `your usage is light — API pay-as-you-go (~${api}/mo per developer) is cheaper than any subscription.`;
   }
 
-  if (apiIsCheapest) {
-    return `your usage is light — API pay-as-you-go (~${formatUSD(cheapest.monthlyUSD)}/mo per developer) is cheaper than any subscription.`;
+  // Heavy enough that a subscription beats API.
+  if (current && !current.isApi) {
+    const save = formatUSD(Math.max(0, apiEquivMonthly - current.monthlyUSD));
+    return `keep your subscription — your usage is worth ${api}/mo at API rates, so ${current.label} ($${current.monthlyUSD}/mo) is saving you ~${save}/mo. Move up a tier only if you hit usage limits.`;
   }
-  return `your usage is worth ${formatUSD(advice.apiEquivMonthly)}/mo at API rates — a subscription is far cheaper. Pick the lowest tier that sustains your volume (from ${cheapestPlan?.label ?? "a plan"} at $${cheapestPlan?.monthlyUSD ?? "?"}/mo).`;
+  if (current && current.isApi) {
+    return `you're on API pay-as-you-go (~${api}/mo) — a subscription is far cheaper. Pick the tier that sustains your volume; limits aren't published as token quotas, so verify.`;
+  }
+  return `your usage is worth ${api}/mo at API rates — far more than any plan's price, so a subscription is much cheaper than API. Choose the tier that sustains your volume; limits aren't published as token quotas, so verify.`;
 }
 
 export function formatUSD(value: number | null): string {
@@ -251,14 +256,17 @@ export function renderMarkdown(report: Report, cfg: Config): string {
         `output ${formatUSD(comp.output)}, fresh input ${formatUSD(comp.freshInput)}.`,
     );
     lines.push("");
-    const est = report.costs.find((c) => c.consumer === "claude-code" && c.totalPerTurn !== null);
-    if (est) {
-      lines.push(
-        `Reconciliation: estimated **${formatUSDRange(est.totalPerTurn)}/turn** (${est.model}) ` +
-          `vs measured **${formatUSD(m.actualCostPerTurn)}/turn** actual.`,
-      );
-      lines.push("");
-    }
+    const cc = report.totals.byConsumer["claude-code"];
+    lines.push(
+      cc
+        ? `**Why this exceeds a static estimate:** the estimate prices only your guaranteed baseline ` +
+            `(~${num(cc.total)} tok/call); your calls actually averaged ${num(m.avgContextTokens)} tok — the ` +
+            `rest is conversation history and files read while working, which a static scan can't see and ` +
+            `which dominate real cost.`
+        : `**Why this exceeds a static estimate:** your calls averaged ${num(m.avgContextTokens)} tok of ` +
+            `context — mostly conversation history and files read while working, which a static repo scan can't see.`,
+    );
+    lines.push("");
     if (m.unpricedCalls > 0) {
       lines.push(`${num(m.unpricedCalls)} call(s) used a model not in the pricing table (excluded from cost).`);
       lines.push("");
