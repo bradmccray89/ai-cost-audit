@@ -33,7 +33,7 @@ describe("computeCosts", () => {
       turnsPerDay: [100],
       apiCallsPerTurn: [1, 1],
       outputTokensPerTurn: [0, 0], // isolate input for this assertion
-      cache: { enabled: true, turnsPerSession: 10 },
+      cache: { enabled: true, turnsPerSession: 10, ttl: "5m" },
       monthlyBudget: null,
     });
     const costs = computeCosts("claude-code", { anthropic: 100_000 }, cfg, modelsFor(cfg));
@@ -54,7 +54,7 @@ describe("computeCosts", () => {
       providers: ["anthropic"],
       turnsPerDay: [100],
       apiCallsPerTurn: [1, 10],
-      cache: { enabled: true, turnsPerSession: 10 },
+      cache: { enabled: true, turnsPerSession: 10, ttl: "5m" },
       monthlyBudget: null,
     });
     const c = computeCosts("claude-code", { anthropic: 100_000 }, cfg, modelsFor(cfg))[0]!;
@@ -75,7 +75,7 @@ describe("computeCosts", () => {
       turnsPerDay: [50, 200, 1000],
       apiCallsPerTurn: [1, 1],
       outputTokensPerTurn: [0, 0], // isolate input for a clean runway assertion
-      cache: { enabled: true, turnsPerSession: 10 },
+      cache: { enabled: true, turnsPerSession: 10, ttl: "5m" },
       monthlyBudget: 100,
       developers: 1,
     });
@@ -93,7 +93,7 @@ describe("computeCosts", () => {
       turnsPerDay: [200],
       apiCallsPerTurn: [1, 1],
       outputTokensPerTurn: [500, 4000],
-      cache: { enabled: true, turnsPerSession: 10 },
+      cache: { enabled: true, turnsPerSession: 10, ttl: "5m" },
       monthlyBudget: 100,
       developers: 1,
     });
@@ -129,11 +129,36 @@ describe("computeCosts", () => {
     expect(c.runwayDays).toBeNull();
   });
 
+  it("charges more for the 1-hour cache TTL than the 5-minute TTL", async () => {
+    const base = {
+      models: ["claude-opus-4-8"],
+      providers: ["anthropic"],
+      turnsPerDay: [100],
+      apiCallsPerTurn: [1, 1] as [number, number],
+      outputTokensPerTurn: [0, 0] as [number, number],
+      monthlyBudget: null,
+    };
+    const cfg5m = await makeConfig({
+      ...base,
+      cache: { enabled: true, turnsPerSession: 10, ttl: "5m" },
+    });
+    const cfg1h = await makeConfig({
+      ...base,
+      cache: { enabled: true, turnsPerSession: 10, ttl: "1h" },
+    });
+    const c5m = computeCosts("claude-code", { anthropic: 100_000 }, cfg5m, modelsFor(cfg5m))[0]!;
+    const c1h = computeCosts("claude-code", { anthropic: 100_000 }, cfg1h, modelsFor(cfg1h))[0]!;
+    // Only the write multiplier differs (2x vs 1.25x), so 1h > 5m.
+    expect(c1h.perTurnCached!.min).toBeGreaterThan(c5m.perTurnCached!.min);
+    // S = 10 calls: 5m mult = (1.25 + 0.1*9)/10 = 0.215; 1h = (2 + 0.1*9)/10 = 0.29.
+    expect(c1h.perTurnCached!.min).toBeCloseTo(0.145, 10); // 0.5 * 0.29
+  });
+
   it("skips cache modeling when disabled", async () => {
     const cfg = await makeConfig({
       models: ["claude-opus-4-8"],
       providers: ["anthropic"],
-      cache: { enabled: false, turnsPerSession: 10 },
+      cache: { enabled: false, turnsPerSession: 10, ttl: "5m" },
     });
     const costs = computeCosts("claude-code", { anthropic: 100_000 }, cfg, modelsFor(cfg));
     expect(costs[0]!.perTurnCached).toBeNull();

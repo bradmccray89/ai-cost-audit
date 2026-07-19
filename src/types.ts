@@ -2,6 +2,8 @@ export type Usage = "guaranteed" | "conditional" | "variable";
 export type Confidence = "high" | "medium" | "low";
 export type Scope = "repo" | "global";
 export type Severity = "info" | "warn" | "error";
+/** Prompt-cache time-to-live. Anthropic: 5-minute (1.25× write) or 1-hour (2× write). */
+export type CacheTtl = "5m" | "1h";
 
 /**
  * A tool that actually loads context sources. Baselines and costs are computed
@@ -72,8 +74,11 @@ export interface ModelPricing {
 export interface ProviderInfo {
   /** Multiplier applied to the o200k_base count to approximate this provider's tokenizer. */
   calibration: number;
-  /** Prompt-cache cost multipliers relative to base input price. Absent = no cache modeling. */
-  cache?: { write: number; read: number };
+  /**
+   * Prompt-cache cost multipliers relative to base input price. Absent = no
+   * cache modeling. Write cost depends on the cache TTL; read is TTL-independent.
+   */
+  cache?: { read: number; write: Record<CacheTtl, number> };
 }
 
 /** An inclusive low–high USD range, reflecting the apiCallsPerTurn range. */
@@ -195,7 +200,7 @@ export interface Config {
   apiCallsPerTurn: [number, number];
   /** Total output tokens generated per user turn, as a [min, max] range. */
   outputTokensPerTurn: [number, number];
-  cache: { enabled: boolean; turnsPerSession: number };
+  cache: { enabled: boolean; turnsPerSession: number; ttl: CacheTtl };
   variable: { conversationHistory: [number, number]; taskFiles: [number, number] };
   calibration: Record<string, number>;
   /** Per-tool override of the shipped system-overhead estimates. 0 excludes it. */

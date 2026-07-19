@@ -22,6 +22,7 @@ const configSchema = z
       .object({
         enabled: z.boolean().default(true),
         turnsPerSession: z.number().int().positive().default(10),
+        ttl: z.enum(["5m", "1h"]).default("5m"),
       })
       .default({}),
     variable: z

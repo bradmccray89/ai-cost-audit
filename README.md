@@ -128,7 +128,7 @@ Drop an `ai-cost-audit.json` in your repo root (all fields optional — zero-con
   "turnsPerDay": [50, 200, 1000],
   "apiCallsPerTurn": [1, 15],
   "outputTokensPerTurn": [500, 4000],
-  "cache": { "enabled": true, "turnsPerSession": 10 },
+  "cache": { "enabled": true, "turnsPerSession": 10, "ttl": "5m" },
   "variable": {
     "conversationHistory": [8000, 25000],
     "taskFiles": [5000, 15000]
@@ -186,11 +186,17 @@ The tool models both. A **turn** is one user message and the `apiCallsPerTurn`
 
 - **Uncached/turn:** `per_call_input_cost × calls` — every call pays the full baseline.
 - **With caching/turn:** the first API call of a session pays the cache-write
-  multiplier (1.25× for Anthropic's 5-minute TTL); every later call across the
-  session pays the read multiplier (0.1×). Over `S = calls × turnsPerSession`
-  session calls: `effective_per_call = (write + read × (S−1)) / S`, and the turn
-  pays `calls ×` that. (At `apiCallsPerTurn = [1,1]` this reduces to the classic
+  multiplier (Anthropic: **1.25× at the 5-minute TTL, 2× at the 1-hour TTL**, set
+  via `cache.ttl`); every later call across the session pays the read multiplier
+  (0.1×). Over `S = calls × turnsPerSession` session calls:
+  `effective_per_call = (write + read × (S−1)) / S`, and the turn pays `calls ×`
+  that. (At `apiCallsPerTurn = [1,1]` and 5m TTL this reduces to the classic
   ~0.215× single-request figure.)
+
+  `cache.ttl` picks the write multiplier only; how many turns actually reuse a
+  cache entry is modeled by `turnsPerSession`. Sparse usage with gaps longer than
+  the TTL re-pays writes more often than this single-write-per-session model
+  assumes — another reason measured transcripts (roadmap) beat configured guesses.
 
 **Output tokens** are added as a separate line: `outputTokensPerTurn × output_price`,
 never cached (output is generated fresh every turn at full price). Output is priced

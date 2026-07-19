@@ -42,9 +42,10 @@ add new findings at the appropriate tier, not the bottom.
       error distribution in the README. The validation data is the marketing.
 - [ ] **`--accurate` flag.** Exact counts via Anthropic `count_tokens` (opt-in,
       needs a key). Cheap to build, large credibility win.
-- [ ] **Cache TTL as a config axis.** 5-min (1.25× write) vs 1-hour (2× write);
-      idle gaps between turns re-pay writes — `requestsPerSession` alone doesn't
-      capture sparse usage.
+- [x] **Cache TTL as a config axis.** `cache.ttl` ("5m" → 1.25× write, "1h" → 2×
+      write); read stays 0.1×. Formula disclosure shows the active TTL. Note left
+      open: idle gaps > TTL re-pay writes — the single-write-per-session model
+      still doesn't capture sparse usage; measured transcripts (tier 2) would.
 
 ## 2. Measurement over estimation — the product wedge
 

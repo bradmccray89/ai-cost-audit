@@ -21,10 +21,11 @@ export function cacheFormulaDescription(cfg: Config): string {
   const t = cfg.cache.turnsPerSession;
   const [aLo, aHi] = cfg.apiCallsPerTurn;
   const [oLo, oHi] = cfg.outputTokensPerTurn;
+  const write = cfg.cache.ttl === "1h" ? "2x" : "1.25x";
   return (
     `a user turn = 1 message + its ${aLo}-${aHi} API calls (tool-use round trips); each call ` +
     `re-sends the baseline. cached input/turn = per_call_input_cost x calls x (write + read x (S-1)) / S, ` +
-    `S = calls x ${t} turns/session (anthropic: write 1.25x, read 0.1x, 5-min TTL). ` +
+    `S = calls x ${t} turns/session (anthropic: write ${write} at ${cfg.cache.ttl} TTL, read 0.1x). ` +
     `output/turn = ${oLo}-${oHi} tokens x output_price (never cached); total = cached input + output`
   );
 }
@@ -97,7 +98,8 @@ export function computeCosts(
     const provider = resolveProvider(model.provider, cfg);
     let perTurnCached: MoneyRange | null = null;
     if (cfg.cache.enabled && provider.cache) {
-      const { write, read } = provider.cache;
+      const read = provider.cache.read;
+      const write = provider.cache.write[cfg.cache.ttl];
       // Cost per turn is linear in calls-per-turn, so endpoints bound the range.
       perTurnCached = {
         min: cachedPerTurn(perCallUncached, aLo, write, read, t),

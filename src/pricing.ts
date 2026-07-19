@@ -45,8 +45,9 @@ export const PROVIDERS: Record<string, ProviderInfo> = {
     // o200k_base undercounts Claude tokens on typical instruction text;
     // Claude counts are roughly 1.15-1.25x the o200k count.
     calibration: 1.2,
-    // Prompt-cache multipliers relative to base input price (5-minute TTL).
-    cache: { write: 1.25, read: 0.1 },
+    // Prompt-cache multipliers relative to base input price. Reads are 0.1x;
+    // writes cost 1.25x at the 5-minute TTL, 2x at the 1-hour TTL.
+    cache: { read: 0.1, write: { "5m": 1.25, "1h": 2.0 } },
   },
   openai: {
     calibration: 1.0,
