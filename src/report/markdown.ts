@@ -177,6 +177,42 @@ export function renderMarkdown(report: Report, cfg: Config): string {
     }
   }
 
+  // 4b. Measured from local transcripts (ground truth).
+  const m = report.measured;
+  if (m) {
+    const pct = (v: number) => `${Math.round(v * 100)}%`;
+    const stat = (s: { min: number; median: number; max: number }) =>
+      `${Math.round(s.median).toLocaleString()} (${Math.round(s.min).toLocaleString()}–${Math.round(s.max).toLocaleString()})`;
+    lines.push(`## Measured from your usage`);
+    lines.push("");
+    lines.push(
+      `From ${m.sessions} local Claude Code session(s), ${m.firstAt.slice(0, 10)} → ${m.lastAt.slice(0, 10)} ` +
+        `(${num(m.turns)} turns, ${num(m.apiCalls)} API calls):`,
+    );
+    lines.push("");
+    lines.push(`| Metric | Measured | vs configured |`);
+    lines.push(`|---|---:|---|`);
+    lines.push(`| API calls/turn | ${stat(m.apiCallsPerTurn)} | configured ${cfg.apiCallsPerTurn[0]}–${cfg.apiCallsPerTurn[1]} |`);
+    lines.push(`| Output tokens/turn | ${stat(m.outputTokensPerTurn)} | configured ${num(cfg.outputTokensPerTurn[0])}–${num(cfg.outputTokensPerTurn[1])} |`);
+    lines.push(`| Turns/day (active) | ${m.turnsPerDay.toFixed(1)} | ${m.activeDays} active days |`);
+    lines.push(`| Cache read rate | ${pct(m.cacheReadRate)} | TTL ${pct(m.ttlSplit["5m"])} 5m / ${pct(m.ttlSplit["1h"])} 1h |`);
+    lines.push(`| Avg context/call | ${num(m.avgContextTokens)} tok | actual baseline + history |`);
+    lines.push(`| **Actual cost** | **${formatUSD(m.actualCostUSD)}** | **${formatUSD(m.actualCostPerTurn)}/turn** |`);
+    lines.push("");
+    const est = report.costs.find((c) => c.consumer === "claude-code" && c.totalPerTurn !== null);
+    if (est) {
+      lines.push(
+        `Reconciliation: estimated **${formatUSDRange(est.totalPerTurn)}/turn** (${est.model}) ` +
+          `vs measured **${formatUSD(m.actualCostPerTurn)}/turn** actual.`,
+      );
+      lines.push("");
+    }
+    if (m.unpricedCalls > 0) {
+      lines.push(`${num(m.unpricedCalls)} call(s) used a model not in the pricing table (excluded from cost).`);
+      lines.push("");
+    }
+  }
+
   // 5. Per-call context size (variable bucket), per tool
   lines.push(`## Typical context per API call`);
   lines.push("");

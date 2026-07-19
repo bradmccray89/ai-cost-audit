@@ -149,6 +149,32 @@ export interface ReportTotals {
   byAdapter: Record<string, number>;
 }
 
+export interface Stats {
+  min: number;
+  median: number;
+  max: number;
+}
+
+/** Measured usage read from local Claude Code transcripts (ground truth). */
+export interface UsageProfile {
+  sessions: number;
+  apiCalls: number;
+  turns: number;
+  firstAt: string;
+  lastAt: string;
+  activeDays: number;
+  models: string[];
+  apiCallsPerTurn: Stats;
+  outputTokensPerTurn: Stats;
+  turnsPerDay: number;
+  cacheReadRate: number;
+  ttlSplit: Record<CacheTtl, number>;
+  avgContextTokens: number;
+  actualCostUSD: number;
+  actualCostPerTurn: number;
+  unpricedCalls: number;
+}
+
 export interface Report {
   meta: {
     tool: string;
@@ -173,6 +199,8 @@ export interface Report {
   /** Per-tool token range for a single API call (baseline + variable context). */
   requestRanges: Record<string, { min: number; max: number }>;
   findings: Finding[];
+  /** Measured usage from local transcripts, when --measure is used and found. */
+  measured: UsageProfile | null;
 }
 
 export interface SnapshotEntry {

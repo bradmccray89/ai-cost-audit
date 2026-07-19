@@ -1,7 +1,7 @@
 import pc from "picocolors";
 import type { Config, Consumer, ModelCost, Report } from "../types.js";
 import { CONSUMER_LABELS, CONSUMER_ORDER } from "../consumers.js";
-import { formatDays, formatUSDRange, KIND_LABELS } from "./markdown.js";
+import { formatDays, formatUSD, formatUSDRange, KIND_LABELS } from "./markdown.js";
 
 /**
  * Terminal-native rendering: aligned columns instead of markdown pipes,
@@ -14,6 +14,11 @@ const GAP = "  ";
 
 function num(n: number): string {
   return n.toLocaleString("en-US");
+}
+
+function statStr(s: { min: number; median: number; max: number }): string {
+  const round = (v: number) => num(Math.round(v));
+  return `${round(s.median)} (${round(s.min)}–${round(s.max)})`;
 }
 
 interface Column {
@@ -233,6 +238,51 @@ export function renderTerminal(report: Report, cfg: Config): string {
             ),
         );
       }
+    }
+    blank();
+  }
+
+  // 4b. Measured from local transcripts (ground truth), when --measure found data.
+  const m = report.measured;
+  if (m) {
+    const pct = (v: number) => `${Math.round(v * 100)}%`;
+    out.push(
+      heading("Measured from your usage") +
+        pc.dim(`  (${m.sessions} session${m.sessions === 1 ? "" : "s"}, ${m.firstAt.slice(0, 10)}→${m.lastAt.slice(0, 10)})`),
+    );
+    const cfgCalls = `configured ${cfg.apiCallsPerTurn[0]}–${cfg.apiCallsPerTurn[1]}`;
+    const cfgOut = `configured ${num(cfg.outputTokensPerTurn[0])}–${num(cfg.outputTokensPerTurn[1])}`;
+    out.push(
+      ...table(
+        [
+          { header: "Metric", align: "left" },
+          { header: "Measured", align: "right" },
+          { header: "vs configured", align: "left" },
+        ],
+        [
+          ["Turns", num(m.turns), `${num(m.apiCalls)} API calls`],
+          ["API calls/turn", statStr(m.apiCallsPerTurn), cfgCalls],
+          ["Output tokens/turn", statStr(m.outputTokensPerTurn), cfgOut],
+          ["Turns/day (active)", m.turnsPerDay.toFixed(1), `${m.activeDays} active days`],
+          ["Cache read rate", pct(m.cacheReadRate), `TTL ${pct(m.ttlSplit["5m"])} 5m / ${pct(m.ttlSplit["1h"])} 1h`],
+          ["Avg context/call", `${num(m.avgContextTokens)} tok`, "actual baseline + history"],
+          ["Actual cost", formatUSD(m.actualCostUSD), `${formatUSD(m.actualCostPerTurn)}/turn`],
+        ],
+      ),
+    );
+    // Reconciliation: estimated Claude Code total/turn vs measured actual/turn.
+    const est = report.costs.find((c) => c.consumer === "claude-code" && c.totalPerTurn !== null);
+    if (est) {
+      out.push(
+        INDENT +
+          pc.dim(
+            `Reconciliation: estimated ${formatUSDRange(est.totalPerTurn)}/turn (${est.model}) ` +
+              `vs measured ${formatUSD(m.actualCostPerTurn)}/turn actual.`,
+          ),
+      );
+    }
+    if (m.unpricedCalls > 0) {
+      out.push(INDENT + pc.dim(`${num(m.unpricedCalls)} call(s) used a model not in the pricing table (excluded from cost).`));
     }
     blank();
   }

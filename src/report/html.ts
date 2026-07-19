@@ -1,6 +1,6 @@
 import type { Config, Consumer, Report } from "../types.js";
 import { CONSUMER_LABELS, CONSUMER_ORDER } from "../consumers.js";
-import { formatUSDRange } from "./markdown.js";
+import { formatUSD, formatUSDRange } from "./markdown.js";
 
 function esc(text: string): string {
   return text
@@ -58,6 +58,31 @@ export function renderHtml(report: Report, cfg: Config): string {
       return `<li><strong>${esc(CONSUMER_LABELS[c])}:</strong> ${num(range.min)}&ndash;${num(range.max)} input tokens</li>`;
     })
     .join("\n");
+
+  const m = report.measured;
+  const measuredHtml = (() => {
+    if (!m) return "";
+    const pct = (v: number) => `${Math.round(v * 100)}%`;
+    const stat = (s: { min: number; median: number; max: number }) =>
+      `${num(Math.round(s.median))} (${num(Math.round(s.min))}&ndash;${num(Math.round(s.max))})`;
+    const est = costs.find((c) => c.consumer === "claude-code" && c.totalPerTurn !== null);
+    const recon = est
+      ? `<p class="muted">Reconciliation: estimated <strong>${formatUSDRange(est.totalPerTurn)}</strong>/turn (${esc(est.model)}) vs measured <strong>${formatUSD(m.actualCostPerTurn)}</strong>/turn actual.</p>`
+      : "";
+    return `
+<h2>Measured from your usage</h2>
+<p class="muted">From ${m.sessions} local Claude Code session(s), ${esc(m.firstAt.slice(0, 10))} &rarr; ${esc(m.lastAt.slice(0, 10))} (${num(m.turns)} turns, ${num(m.apiCalls)} API calls).</p>
+<table>
+<tr><th>Metric</th><th class="r">Measured</th><th>vs configured</th></tr>
+<tr><td>API calls/turn</td><td class="r">${stat(m.apiCallsPerTurn)}</td><td>configured ${num(cfg.apiCallsPerTurn[0])}&ndash;${num(cfg.apiCallsPerTurn[1])}</td></tr>
+<tr><td>Output tokens/turn</td><td class="r">${stat(m.outputTokensPerTurn)}</td><td>configured ${num(cfg.outputTokensPerTurn[0])}&ndash;${num(cfg.outputTokensPerTurn[1])}</td></tr>
+<tr><td>Turns/day (active)</td><td class="r">${m.turnsPerDay.toFixed(1)}</td><td>${m.activeDays} active days</td></tr>
+<tr><td>Cache read rate</td><td class="r">${pct(m.cacheReadRate)}</td><td>TTL ${pct(m.ttlSplit["5m"])} 5m / ${pct(m.ttlSplit["1h"])} 1h</td></tr>
+<tr><td>Avg context/call</td><td class="r">${num(m.avgContextTokens)} tok</td><td>actual baseline + history</td></tr>
+<tr class="total"><td>Actual cost</td><td class="r">${formatUSD(m.actualCostUSD)}</td><td>${formatUSD(m.actualCostPerTurn)}/turn</td></tr>
+</table>
+${recon}`;
+  })();
 
   const findingItems =
     findings.length === 0
@@ -125,7 +150,7 @@ ${consumerRows}
 ${costRows}
 </table>
 <p class="muted">${esc(meta.cacheFormula)}</p>
-
+${measuredHtml}
 <h2>Typical context per API call</h2>
 <ul>
 ${rangeItems}

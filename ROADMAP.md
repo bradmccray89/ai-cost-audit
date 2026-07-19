@@ -49,11 +49,17 @@ add new findings at the appropriate tier, not the bottom.
 
 ## 2. Measurement over estimation — the product wedge
 
-- [ ] **Read Claude Code local transcripts** (`~/.claude/projects/**/*.jsonl`).
-      Per-API-call token usage, cache hits, output tokens — real, offline, no key.
-      Calibrates every config guess (calls/turn, requests/session, history sizes)
-      and enables the killer line: "your CLAUDE.md cost you $X last month."
-      This turns an estimator into an auditor; ccusage tracks spend, we attribute it.
+- [x] **Read Claude Code local transcripts** (`~/.claude/projects/**/*.jsonl`) via
+      `scan --measure`. Measures calls/turn, output/turn, cache read rate + TTL split,
+      turns/day, avg context/call, and **actual $ spent** (priced from recorded token
+      usage); reconciles estimate vs actual; shows measured next to configured.
+      Offline, no key. First slice done — follow-ups below:
+  - [ ] Feed measured calls/turn + output/turn back into the projection when
+        `--measure` is on (auto-tailor, not just display alongside).
+  - [ ] Attribute cost to specific context (per-file / per-CLAUDE.md dollar impact)
+        — "your CLAUDE.md cost you $X"; needs mapping cached prefix to sources.
+  - [ ] Use measured cached-prefix size to validate the ×1.2 calibration and the
+        system-overhead constants empirically (closes two tier-1 items with real data).
 - [ ] **Measure MCP schemas** with opt-in `--measure-mcp`: spawn stdio servers
       from the config command, do an MCP `initialize` + `tools/list` handshake,
       tokenize the actual schemas. Closes the biggest self-declared unknown.

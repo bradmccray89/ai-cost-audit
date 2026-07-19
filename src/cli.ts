@@ -11,6 +11,7 @@ import { renderTerminal } from "./report/terminal.js";
 import { readSnapshot, writeSnapshot } from "./snapshot.js";
 import { evaluateBudget, EXIT_ERROR, EXIT_PASS, EXIT_VIOLATION } from "./budget.js";
 import { resolvePricing } from "./pricingStore.js";
+import { measureUsage, locateTranscriptDir, defaultProjectsRoot } from "./transcripts.js";
 
 const program = new Command();
 
@@ -39,6 +40,10 @@ program
     "--refresh-pricing",
     "fetch current prices from config.pricing.sourceUrl (default: offline, uses bundled dated prices)",
   )
+  .option(
+    "--measure",
+    "read local Claude Code transcripts for this repo and report measured usage + actual cost",
+  )
   .action(async (projectPath: string, options) => {
     try {
       const resolved = path.resolve(projectPath);
@@ -53,8 +58,18 @@ program
       });
       if (pricingWarning) process.stderr.write(pc.yellow(`${pricingWarning}\n`));
 
+      const measured =
+        options.measure === true ? measureUsage(resolved, pricing.table) : null;
+      if (options.measure === true && measured === null) {
+        process.stderr.write(
+          pc.yellow(
+            `No Claude Code transcripts found for this repo under ${defaultProjectsRoot()}.\n`,
+          ),
+        );
+      }
+
       const snapshot = await readSnapshot(resolved);
-      const { report, sources } = await runScan(resolved, config, snapshot, pricing);
+      const { report, sources } = await runScan(resolved, config, snapshot, pricing, measured);
 
       // Default: rich output on a terminal, markdown when piped or written to
       // a file (so scripts and saved reports stay ANSI-free).
@@ -85,6 +100,13 @@ program
       if (configPath === null) {
         process.stderr.write(
           pc.dim(`(no ai-cost-audit.json found — ran with defaults)\n`),
+        );
+      }
+
+      // Nudge: real usage is sitting in local transcripts but wasn't used.
+      if (options.measure !== true && locateTranscriptDir(resolved, defaultProjectsRoot())) {
+        process.stderr.write(
+          pc.dim(`(local Claude Code transcripts found — add --measure to use your actual usage)\n`),
         );
       }
 

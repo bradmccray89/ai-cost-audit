@@ -167,6 +167,8 @@ ai-cost-audit scan [path]
   --ref-depth <n>        levels of @imports/links to follow (default: 3)
   --refresh-pricing      fetch current prices from config.pricing.sourceUrl
                          (default: offline; uses bundled dated prices)
+  --measure              read local Claude Code transcripts for this repo and
+                         report measured usage + actual cost (offline, no key)
 ```
 
 ## The cost model (turns, API calls, and caching)
@@ -203,9 +205,32 @@ never cached (output is generated fresh every turn at full price). Output is pri
 ~5× input and is commonly 20–40% of real spend, so the report shows a per-turn
 **Total = cached input + output**, and daily/runway figures use that all-in total.
 
-`apiCallsPerTurn` and `outputTokensPerTurn` are rough defaults pending per-user
-measurement from local transcripts (on the roadmap); tune them to your workflow. The
-formula is printed in every report so the math is auditable.
+`apiCallsPerTurn` and `outputTokensPerTurn` are rough defaults; tune them to your
+workflow, or measure them with `--measure` (below). The formula is printed in every
+report so the math is auditable.
+
+## Measured mode (`--measure`) — your actual usage, not a guess
+
+The estimate above turns your repo's token inventory into a cost using generic
+assumptions. `--measure` replaces the guessing with **ground truth** read from your
+local Claude Code transcripts (`~/.claude/projects/**/*.jsonl`) — still offline, no
+API key, no network:
+
+```bash
+npx ai-cost-audit scan --measure
+```
+
+It reports, for this exact repo, what actually happened — measured API calls/turn,
+output tokens/turn, cache read rate and TTL split, average context per call, and the
+**actual dollars spent** (priced from the recorded per-call token usage, including
+the 5m/1h cache-write split) — each shown next to the configured assumption so the
+gap is visible. It then **reconciles** the estimate against reality: "estimated
+$X/turn vs measured $Y/turn." Real sessions routinely show far more calls and output
+per turn than the defaults assume, so this is the honest number. Copy the measured
+values into your config to make every projection setup-specific.
+
+Currently Claude Code only (that's where local transcripts live); Cursor/Copilot
+have no comparable local logs.
 
 ## Honesty (read this)
 

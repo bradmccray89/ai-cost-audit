@@ -1,5 +1,12 @@
 import path from "node:path";
-import type { Config, ConsumerTotals, ContextSource, Report, Snapshot } from "./types.js";
+import type {
+  Config,
+  ConsumerTotals,
+  ContextSource,
+  Report,
+  Snapshot,
+  UsageProfile,
+} from "./types.js";
 import { CONSUMER_ORDER, resolveSystemOverhead, SYSTEM_OVERHEAD_AS_OF } from "./consumers.js";
 import { discoverAll } from "./adapters/index.js";
 import { findDuplicates } from "./analysis/duplication.js";
@@ -22,6 +29,7 @@ export async function runScan(
   cfg: Config,
   snapshot: Snapshot | null,
   pricing: ResolvedPricing = { table: bundledPricing(), origin: "bundled", source: bundledPricing().source },
+  measured: UsageProfile | null = null,
 ): Promise<ScanResult> {
   const now = new Date();
   const sources = await discoverAll(projectPath, cfg);
@@ -138,6 +146,7 @@ export async function runScan(
     costs,
     requestRanges,
     findings,
+    measured,
   };
 
   return { report, sources };

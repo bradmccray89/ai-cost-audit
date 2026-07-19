@@ -1,7 +1,27 @@
 import { describe, expect, it } from "vitest";
 import { runScan } from "../src/scan.js";
 import { renderTerminal } from "../src/report/terminal.js";
+import type { UsageProfile } from "../src/types.js";
 import { makeConfig, SAMPLE_REPO } from "./helpers.js";
+
+const SAMPLE_PROFILE: UsageProfile = {
+  sessions: 2,
+  apiCalls: 40,
+  turns: 8,
+  firstAt: "2026-07-10T10:00:00.000Z",
+  lastAt: "2026-07-12T18:00:00.000Z",
+  activeDays: 3,
+  models: ["claude-opus-4-8"],
+  apiCallsPerTurn: { min: 2, median: 5, max: 12 },
+  outputTokensPerTurn: { min: 300, median: 1800, max: 6000 },
+  turnsPerDay: 2.67,
+  cacheReadRate: 0.9,
+  ttlSplit: { "5m": 0.2, "1h": 0.8 },
+  avgContextTokens: 45000,
+  actualCostUSD: 3.2,
+  actualCostPerTurn: 0.4,
+  unpricedCalls: 0,
+};
 
 /* eslint-disable no-control-regex */
 const ANSI_RE = /\[[0-9;]*m/g;
@@ -63,6 +83,25 @@ describe("renderTerminal", () => {
     const text = plainLines(renderTerminal(report, cfg)).join("\n");
     expect(text).toMatch(/\d+\.\s*\[warn\] duplicate-content/);
     expect(text).toContain("[info]");
+  });
+
+  it("renders the measured section and reconciliation when a profile is present", async () => {
+    const cfg = await makeConfig();
+    const { report } = await runScan(SAMPLE_REPO, cfg, null, undefined, SAMPLE_PROFILE);
+    const text = plainLines(renderTerminal(report, cfg)).join("\n");
+    expect(text).toContain("MEASURED FROM YOUR USAGE");
+    expect(text).toContain("Actual cost");
+    expect(text).toContain("$0.40/turn");
+    // Reconciliation shows because the sample repo has a Claude Code estimate.
+    expect(text).toMatch(/Reconciliation: estimated .* vs measured \$0\.40\/turn/);
+  });
+
+  it("omits the measured section when no profile is present", async () => {
+    const cfg = await makeConfig();
+    const { report } = await runScan(SAMPLE_REPO, cfg, null);
+    const text = plainLines(renderTerminal(report, cfg)).join("\n");
+    expect(report.measured).toBeNull();
+    expect(text).not.toContain("MEASURED FROM YOUR USAGE");
   });
 
   it("includes the disclosure footer", async () => {
